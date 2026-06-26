@@ -7,13 +7,5 @@ struct ClawliciousApp: App {
             ContentView()
         }
         .defaultSize(width: 1360, height: 820)
-        .commands {
-            CommandGroup(after: .newItem) {
-                Button("Add Bookmark") {
-                    NSApp.sendAction(#selector(NSResponder.insertNewline(_:)), to: nil, from: nil)
-                }
-                .keyboardShortcut("n", modifiers: [.command])
-            }
-        }
     }
 }
