@@ -5,6 +5,8 @@ struct ContentView: View {
     @StateObject private var library = BookmarkLibrary()
     @StateObject private var browser = BrowserModel()
     @State private var bookmarkPendingDeletion: Bookmark?
+    @State private var bookmarkColumnWidth: CGFloat = 430
+    @State private var detailColumnWidth: CGFloat = 620
     @FocusState private var isAddingBookmark: Bool
 
     var body: some View {
@@ -12,10 +14,25 @@ struct ContentView: View {
             SidebarView(library: library)
                 .navigationSplitViewColumnWidth(min: 210, ideal: 240, max: 290)
         } content: {
-            BookmarkListView(library: library, isAddingBookmark: $isAddingBookmark)
+            BookmarkListView(library: library)
+                .background(ColumnWidthReporter(width: $bookmarkColumnWidth))
                 .navigationSplitViewColumnWidth(min: 360, ideal: 430, max: 540)
         } detail: {
             DetailWebView(library: library, bookmark: library.selectedBookmark, browser: browser)
+                .background(ColumnWidthReporter(width: $detailColumnWidth))
+        }
+        .background {
+            GeometryReader { proxy in
+                TitlebarControls(
+                    library: library,
+                    browser: browser,
+                    isAddingBookmark: $isAddingBookmark,
+                    hasBookmark: library.selectedBookmark != nil,
+                    totalWidth: proxy.size.width,
+                    bookmarkColumnWidth: bookmarkColumnWidth,
+                    detailColumnWidth: detailColumnWidth
+                )
+            }
         }
         .background {
             LiquidGlassSurface(material: .ultraThinMaterial, tint: .black.opacity(0.14))
@@ -139,14 +156,9 @@ private struct AddBookmarkField: View {
 
 private struct BookmarkListView: View {
     @ObservedObject var library: BookmarkLibrary
-    var isAddingBookmark: FocusState<Bool>.Binding
 
     var body: some View {
         VStack(spacing: 0) {
-            AddBookmarkField(library: library, isFocused: isAddingBookmark)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-            Divider()
             List(library.visibleBookmarks, selection: $library.selectedID) { bookmark in
                 BookmarkRow(bookmark: bookmark) {
                     library.retryBookmark(bookmark)
@@ -304,15 +316,6 @@ private struct DetailWebView: View {
             }
         }
         .background(.background)
-        .background {
-            GeometryReader { proxy in
-                TitlebarBrowserControls(
-                    browser: browser,
-                    isVisible: bookmark != nil,
-                    width: proxy.size.width
-                )
-            }
-        }
         .onChange(of: bookmark?.updatedAt) { _, _ in
             if bookmark?.status == .pending, browser.extractedMarkdown.isEmpty {
                 browser.reload()
@@ -321,10 +324,26 @@ private struct DetailWebView: View {
     }
 }
 
-private struct TitlebarBrowserControls: NSViewRepresentable {
+private struct ColumnWidthReporter: View {
+    @Binding var width: CGFloat
+
+    var body: some View {
+        GeometryReader { proxy in
+            Color.clear
+                .onAppear { width = proxy.size.width }
+                .onChange(of: proxy.size.width) { _, newWidth in width = newWidth }
+        }
+    }
+}
+
+private struct TitlebarControls: NSViewRepresentable {
+    @ObservedObject var library: BookmarkLibrary
     @ObservedObject var browser: BrowserModel
-    var isVisible: Bool
-    var width: CGFloat
+    var isAddingBookmark: FocusState<Bool>.Binding
+    var hasBookmark: Bool
+    var totalWidth: CGFloat
+    var bookmarkColumnWidth: CGFloat
+    var detailColumnWidth: CGFloat
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -336,7 +355,16 @@ private struct TitlebarBrowserControls: NSViewRepresentable {
 
     func updateNSView(_ view: NSView, context: Context) {
         DispatchQueue.main.async {
-            context.coordinator.update(window: view.window, browser: browser, isVisible: isVisible, width: width)
+            context.coordinator.update(
+                window: view.window,
+                library: library,
+                browser: browser,
+                isAddingBookmark: isAddingBookmark,
+                hasBookmark: hasBookmark,
+                totalWidth: totalWidth,
+                bookmarkColumnWidth: bookmarkColumnWidth,
+                detailColumnWidth: detailColumnWidth
+            )
         }
     }
 
@@ -348,10 +376,19 @@ private struct TitlebarBrowserControls: NSViewRepresentable {
     final class Coordinator {
         private weak var window: NSWindow?
         private var controller: NSTitlebarAccessoryViewController?
-        private var hostingView: NSHostingView<TitlebarBrowserControlsContent>?
+        private var hostingView: PassthroughHostingView<TitlebarControlsContent>?
 
-        func update(window newWindow: NSWindow?, browser: BrowserModel, isVisible: Bool, width: CGFloat) {
-            guard isVisible, let newWindow else {
+        func update(
+            window newWindow: NSWindow?,
+            library: BookmarkLibrary,
+            browser: BrowserModel,
+            isAddingBookmark: FocusState<Bool>.Binding,
+            hasBookmark: Bool,
+            totalWidth: CGFloat,
+            bookmarkColumnWidth: CGFloat,
+            detailColumnWidth: CGFloat
+        ) {
+            guard let newWindow else {
                 removeAccessory()
                 return
             }
@@ -361,14 +398,22 @@ private struct TitlebarBrowserControls: NSViewRepresentable {
                 window = newWindow
             }
 
-            let width = max(0, width)
-            let rootView = TitlebarBrowserControlsContent(browser: browser, width: width)
+            let width = max(0, totalWidth)
+            let rootView = TitlebarControlsContent(
+                library: library,
+                browser: browser,
+                isAddingBookmark: isAddingBookmark,
+                hasBookmark: hasBookmark,
+                totalWidth: width,
+                bookmarkColumnWidth: bookmarkColumnWidth,
+                detailColumnWidth: detailColumnWidth
+            )
 
             if let hostingView {
                 hostingView.rootView = rootView
                 hostingView.frame.size = NSSize(width: width, height: Self.height)
             } else {
-                let hostingView = NSHostingView(rootView: rootView)
+                let hostingView = PassthroughHostingView(rootView: rootView)
                 hostingView.frame = NSRect(x: 0, y: 0, width: width, height: Self.height)
                 self.hostingView = hostingView
 
@@ -395,18 +440,49 @@ private struct TitlebarBrowserControls: NSViewRepresentable {
     }
 }
 
-private struct TitlebarBrowserControlsContent: View {
+private final class PassthroughHostingView<Content: View>: NSHostingView<Content> {
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let hitView = super.hitTest(point)
+        return hitView === self ? nil : hitView
+    }
+}
+
+private struct TitlebarControlsContent: View {
+    @ObservedObject var library: BookmarkLibrary
     @ObservedObject var browser: BrowserModel
-    var width: CGFloat
+    var isAddingBookmark: FocusState<Bool>.Binding
+    var hasBookmark: Bool
+    var totalWidth: CGFloat
+    var bookmarkColumnWidth: CGFloat
+    var detailColumnWidth: CGFloat
 
     var body: some View {
-        HStack {
-            BrowserControls(browser: browser)
-            Spacer(minLength: 0)
+        HStack(spacing: 0) {
+            Color.clear
+                .frame(width: sidebarWidth)
+                .allowsHitTesting(false)
+
+            AddBookmarkField(library: library, isFocused: isAddingBookmark)
+                .padding(.horizontal, 10)
+                .frame(width: bookmarkColumnWidth)
+
+            if hasBookmark {
+                BrowserControls(browser: browser)
+                    .padding(.leading, 10)
+                    .padding(.trailing, 12)
+                    .frame(width: detailColumnWidth, alignment: .leading)
+            } else {
+                Color.clear
+                    .frame(width: detailColumnWidth)
+                    .allowsHitTesting(false)
+            }
         }
-        .frame(width: width, height: 52, alignment: .leading)
-        .padding(.leading, 10)
+        .frame(width: totalWidth, height: 52, alignment: .leading)
         .allowsHitTesting(true)
+    }
+
+    private var sidebarWidth: CGFloat {
+        max(0, totalWidth - bookmarkColumnWidth - detailColumnWidth)
     }
 }
 
@@ -448,6 +524,15 @@ private struct BrowserControls: View {
                 Image(systemName: browser.contentMode == .html ? "doc.plaintext" : "globe")
             }
             .help(browser.contentMode == .html ? "Show extracted Markdown" : "Show webpage")
+
+            Text(browser.address.isEmpty ? "Website" : browser.address)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+                .frame(minWidth: 220, maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 5))
         }
         .buttonStyle(.borderless)
         .controlSize(.small)
