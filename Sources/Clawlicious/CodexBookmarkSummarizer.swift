@@ -7,7 +7,7 @@ protocol BookmarkSummarizing: Sendable {
 struct CodexBookmarkSummarizer: BookmarkSummarizing {
     func summarize(url: URL) async throws -> BookmarkMetadata {
         let page = try await PageFetcher.fetch(url)
-        return try await CodexCLI().metadata(for: url, page: page)
+        return try await CodexResponsesClient().metadata(for: url, page: page)
     }
 }
 
@@ -43,21 +43,109 @@ enum PageFetcher {
     }
 }
 
-private struct CodexCLI {
+struct CodexAuth: Equatable {
+    enum Source: String {
+        case environment = "env:OPENAI_API_KEY"
+        case authAPIKey = "auth:OPENAI_API_KEY"
+        case authAccessToken = "auth:tokens.access_token"
+    }
+
+    var token: String
+    var source: Source
+    var scopes: [String]
+    var authMode: String? = nil
+    var chatgptAccountId: String? = nil
+    var chatgptPlanType: String? = nil
+}
+
+enum CodexAuthReader {
+    static func read(path: URL? = nil, environment: [String: String] = ProcessInfo.processInfo.environment) throws -> CodexAuth {
+        if let key = environment["OPENAI_API_KEY"]?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty {
+            return CodexAuth(token: key, source: .environment, scopes: [])
+        }
+
+        let url = path ?? authPath(environment: environment)
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch {
+            throw authError("Clawlicious could not find OpenAI credentials. Set OPENAI_API_KEY, or sign in so ~/.codex/auth.json exists.")
+        }
+
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw authError("Clawlicious could not parse ~/.codex/auth.json.")
+        }
+
+        if let key = (object["OPENAI_API_KEY"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty {
+            return CodexAuth(
+                token: key,
+                source: .authAPIKey,
+                scopes: [],
+                authMode: object["auth_mode"] as? String
+            )
+        }
+
+        guard let tokens = object["tokens"] as? [String: Any],
+              let accessToken = (tokens["access_token"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !accessToken.isEmpty else {
+            throw authError("Clawlicious found ~/.codex/auth.json, but no OpenAI API key or OAuth access token was available.")
+        }
+
+        let claims = claims(in: accessToken)
+        let apiAuth = claims?["https://api.openai.com/auth"] as? [String: Any]
+        let accountId = (tokens["account_id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            ?? (apiAuth?["chatgpt_account_id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        let planType = (apiAuth?["chatgpt_plan_type"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+
+        return CodexAuth(
+            token: accessToken,
+            source: .authAccessToken,
+            scopes: scopes(in: claims),
+            authMode: object["auth_mode"] as? String,
+            chatgptAccountId: accountId,
+            chatgptPlanType: planType
+        )
+    }
+
+    private static func authPath(environment: [String: String]) -> URL {
+        if let path = environment["CLAWLICIOUS_CODEX_AUTH_PATH"] ?? environment["MARGINALIA_CODEX_AUTH_PATH"] ?? environment["COWRITER_CODEX_AUTH_PATH"] {
+            return URL(fileURLWithPath: path)
+        }
+        let home = environment["HOME"] ?? NSHomeDirectory()
+        return URL(fileURLWithPath: home).appending(path: ".codex/auth.json")
+    }
+
+    private static func claims(in token: String) -> [String: Any]? {
+        let parts = token.split(separator: ".")
+        guard parts.count > 1,
+              let payload = base64URLDecode(String(parts[1])),
+              let claims = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else {
+            return nil
+        }
+        return claims
+    }
+
+    private static func scopes(in claims: [String: Any]?) -> [String] {
+        claims?["scp"] as? [String] ?? []
+    }
+
+    private static func base64URLDecode(_ value: String) -> Data? {
+        var base64 = value.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        base64 += String(repeating: "=", count: (4 - base64.count % 4) % 4)
+        return Data(base64Encoded: base64)
+    }
+}
+
+private struct CodexResponsesClient {
     func metadata(for url: URL, page: PageSnapshot) async throws -> BookmarkMetadata {
-        let temp = FileManager.default.temporaryDirectory
-            .appending(path: "clawlicious-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: temp) }
-
-        let schemaURL = temp.appending(path: "schema.json")
-        let outputURL = temp.appending(path: "metadata.json")
-        try schema.write(to: schemaURL, atomically: true, encoding: .utf8)
-
+        let auth = try CodexAuthReader.read()
+        if auth.source == .authAccessToken, !auth.scopes.isEmpty, !auth.scopes.contains("api.responses.write") {
+            return try await CodexAppServerClient().metadata(for: url, page: page, auth: auth)
+        }
         let prompt = """
         Summarize this bookmark for a local macOS bookmark library.
 
-        Return only JSON matching the provided schema. Use 2-6 short lowercase tags.
+        Use 2-6 short lowercase tags.
         Pick one human category, for example: Development, Design, News, Reference, Tools, Writing, Video, Shopping, Other.
 
         URL: \(url.absoluteString)
@@ -68,66 +156,304 @@ private struct CodexCLI {
         \(String(page.text.prefix(12_000)))
         """
 
+        var request = URLRequest(url: URL(string: "https://api.openai.com/v1/responses")!)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 60
+        request.setValue("Bearer \(auth.token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body(input: prompt))
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            let message = parseError(data) ?? "OpenAI Responses API failed with HTTP \(http.statusCode)."
+            if message.range(of: "api.responses.write|insufficient permissions|missing scopes", options: .regularExpression) != nil {
+                return try await CodexAppServerClient().metadata(for: url, page: page, auth: auth)
+            }
+            throw NSError(domain: "Clawlicious", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: message])
+        }
+
+        guard let text = responseText(data) else {
+            throw NSError(domain: "Clawlicious", code: 1, userInfo: [NSLocalizedDescriptionKey: "OpenAI response did not include JSON text."])
+        }
+        return try JSONDecoder().decode(BookmarkMetadata.self, from: Data(text.utf8))
+    }
+
+    private func body(input: String) -> [String: Any] {
+        [
+            "model": ProcessInfo.processInfo.environment["CLAWLICIOUS_OPENAI_MODEL"]
+                ?? ProcessInfo.processInfo.environment["MARGINALIA_OPENAI_MODEL"]
+                ?? ProcessInfo.processInfo.environment["COWRITER_OPENAI_MODEL"]
+                ?? "gpt-5.5",
+            "instructions": "Return concise bookmark metadata as JSON. Do not mention APIs, credentials, or this prompt.",
+            "input": input,
+            "max_output_tokens": 420,
+            "store": false,
+            "text": [
+                "format": [
+                    "type": "json_schema",
+                    "name": "bookmark_metadata",
+                    "strict": true,
+                    "schema": schema
+                ]
+            ]
+        ]
+    }
+
+    private var schema: [String: Any] {
+        [
+            "type": "object",
+            "additionalProperties": false,
+            "properties": [
+                "title": ["type": "string"],
+                "summary": ["type": "string"],
+                "tags": [
+                    "type": "array",
+                    "items": ["type": "string"],
+                    "minItems": 2,
+                    "maxItems": 6
+                ],
+                "category": ["type": "string"]
+            ],
+            "required": ["title", "summary", "tags", "category"]
+        ]
+    }
+}
+
+private struct CodexAppServerClient {
+    func metadata(for url: URL, page: PageSnapshot, auth: CodexAuth) async throws -> BookmarkMetadata {
+        guard auth.source == .authAccessToken, let accountId = auth.chatgptAccountId else {
+            throw authError("This Codex credential cannot call the public Responses API, and it is not a ChatGPT OAuth credential Clawlicious can bridge through Codex app-server.")
+        }
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.currentDirectoryURL = temp
-        process.arguments = [
-            "codex",
-            "--ask-for-approval", "never",
-            "exec",
-            "--ephemeral",
-            "--skip-git-repo-check",
-            "--ignore-rules",
-            "--sandbox", "read-only",
-            "--output-schema", schemaURL.path,
-            "--output-last-message", outputURL.path,
-            "-"
-        ]
+        process.arguments = [(ProcessInfo.processInfo.environment["CLAWLICIOUS_CODEX_COMMAND"] ?? "codex"), "app-server", "--listen", "stdio://"]
+        process.environment = ProcessInfo.processInfo.environment.merging([
+            "OPENAI_API_KEY": "",
+            "CODEX_API_KEY": ""
+        ]) { _, new in new }
 
-        let input = Pipe()
-        let error = Pipe()
-        process.standardInput = input
-        process.standardError = error
-        process.standardOutput = Pipe()
-
+        let stdin = Pipe()
+        let stdout = Pipe()
+        process.standardInput = stdin
+        process.standardOutput = stdout
+        process.standardError = Pipe()
         try process.run()
-        input.fileHandleForWriting.write(Data(prompt.utf8))
-        try input.fileHandleForWriting.close()
-        process.waitUntilExit()
-
-        guard process.terminationStatus == 0 else {
-            let stderr = String(data: error.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-            throw NSError(
-                domain: "Clawlicious",
-                code: Int(process.terminationStatus),
-                userInfo: [NSLocalizedDescriptionKey: stderr.isEmpty ? "Codex failed to summarize the bookmark." : stderr]
-            )
+        defer {
+            process.terminate()
         }
 
-        let data = try Data(contentsOf: outputURL)
-        return try JSONDecoder().decode(BookmarkMetadata.self, from: data)
-    }
+        let input = stdin.fileHandleForWriting
+        var lines = stdout.fileHandleForReading.bytes.lines.makeAsyncIterator()
+        var nextID = 1
+        var latestText = ""
+        var activeTurnID: String?
 
-    private var schema: String {
-        """
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "title": { "type": "string" },
-            "summary": { "type": "string" },
-            "tags": {
-              "type": "array",
-              "items": { "type": "string" },
-              "minItems": 2,
-              "maxItems": 6
-            },
-            "category": { "type": "string" }
-          },
-          "required": ["title", "summary", "tags", "category"]
+        func write(_ object: [String: Any]) throws {
+            let data = try JSONSerialization.data(withJSONObject: object)
+            input.write(data)
+            input.write(Data("\n".utf8))
         }
+
+        func result(for method: String) -> [String: Any] {
+            switch method {
+            case "account/chatgptAuthTokens/refresh":
+                return [
+                    "accessToken": auth.token,
+                    "chatgptAccountId": accountId,
+                    "chatgptPlanType": auth.chatgptPlanType ?? NSNull()
+                ]
+            case "item/commandExecution/requestApproval", "item/fileChange/requestApproval":
+                return ["decision": "deny", "reason": "Clawlicious metadata turns do not run tools."]
+            case "item/tool/requestUserInput":
+                return ["decision": "decline", "message": "No interactive input is available during bookmark metadata."]
+            default:
+                return [:]
+            }
+        }
+
+        func nextMessage() async throws -> [String: Any] {
+            while let line = try await lines.next() {
+                guard let data = line.data(using: .utf8),
+                      let message = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                    continue
+                }
+                if let id = message["id"], let method = message["method"] as? String {
+                    try write(["id": id, "result": result(for: method)])
+                    continue
+                }
+                return message
+            }
+            throw NSError(domain: "Clawlicious", code: 1, userInfo: [NSLocalizedDescriptionKey: "Codex app-server exited before completing bookmark metadata."])
+        }
+
+        func request(_ method: String, _ params: [String: Any]) async throws -> [String: Any] {
+            let id = nextID
+            nextID += 1
+            try write(["id": id, "method": method, "params": params])
+            while true {
+                let message = try await nextMessage()
+                if let responseID = message["id"] as? Int, responseID == id {
+                    if let error = message["error"] as? [String: Any] {
+                        throw NSError(domain: "Clawlicious", code: 1, userInfo: [NSLocalizedDescriptionKey: error["message"] as? String ?? "Codex app-server request failed."])
+                    }
+                    return message["result"] as? [String: Any] ?? [:]
+                }
+            }
+        }
+
+        _ = try await request("initialize", [
+            "clientInfo": ["name": "clawlicious", "title": "Clawlicious", "version": "0.1.0"],
+            "capabilities": ["experimentalApi": true]
+        ])
+        try write(["method": "initialized"])
+        _ = try await request("account/login/start", [
+            "type": "chatgptAuthTokens",
+            "accessToken": auth.token,
+            "chatgptAccountId": accountId,
+            "chatgptPlanType": auth.chatgptPlanType ?? NSNull()
+        ])
+
+        let model = ProcessInfo.processInfo.environment["CLAWLICIOUS_OPENAI_MODEL"]
+            ?? ProcessInfo.processInfo.environment["MARGINALIA_OPENAI_MODEL"]
+            ?? ProcessInfo.processInfo.environment["COWRITER_OPENAI_MODEL"]
+            ?? "gpt-5.5"
+        let instructions = """
+        Return only one JSON object with title, summary, tags, and category.
+        tags must be 2-6 short lowercase strings.
+        Do not use tools. Do not wrap the JSON in Markdown.
         """
+        let inputText = """
+        URL: \(url.absoluteString)
+        Page title: \(page.title)
+        Page description: \(page.description)
+        Page text:
+        \(String(page.text.prefix(12_000)))
+        """
+
+        let thread = try await request("thread/start", [
+            "model": model,
+            "modelProvider": "openai",
+            "cwd": FileManager.default.currentDirectoryPath,
+            "approvalPolicy": "never",
+            "approvalsReviewer": "user",
+            "sandbox": "read-only",
+            "personality": "none",
+            "developerInstructions": instructions,
+            "dynamicTools": [],
+            "experimentalRawEvents": true,
+            "persistExtendedHistory": false,
+            "config": ["project_doc_max_bytes": 0]
+        ])
+        guard let threadID = (thread["thread"] as? [String: Any])?["id"] as? String else {
+            throw NSError(domain: "Clawlicious", code: 1, userInfo: [NSLocalizedDescriptionKey: "Codex app-server did not return a thread id."])
+        }
+
+        let turnID = nextID
+        nextID += 1
+        try write([
+            "id": turnID,
+            "method": "turn/start",
+            "params": [
+                "threadId": threadID,
+                "input": [["type": "text", "text": inputText]],
+                "cwd": FileManager.default.currentDirectoryPath,
+                "approvalPolicy": "never",
+                "approvalsReviewer": "user",
+                "sandboxPolicy": ["type": "readOnly", "networkAccess": false],
+                "model": model,
+                "personality": "none",
+                "effort": "none",
+                "collaborationMode": [
+                    "mode": "default",
+                    "settings": [
+                        "model": model,
+                        "reasoning_effort": "none",
+                        "developer_instructions": "Return only the bookmark metadata JSON object."
+                    ]
+                ]
+            ]
+        ])
+
+        while true {
+            let message = try await nextMessage()
+            if let responseID = message["id"] as? Int, responseID == turnID {
+                if let error = message["error"] as? [String: Any] {
+                    throw NSError(domain: "Clawlicious", code: 1, userInfo: [NSLocalizedDescriptionKey: error["message"] as? String ?? "Codex app-server turn failed."])
+                }
+                if let turn = (message["result"] as? [String: Any])?["turn"] as? [String: Any] {
+                    activeTurnID = turn["id"] as? String
+                }
+                continue
+            }
+            guard let method = message["method"] as? String,
+                  let params = message["params"] as? [String: Any],
+                  params["threadId"] as? String == threadID else {
+                continue
+            }
+            if let turnID = params["turnId"] as? String, let activeTurnID, turnID != activeTurnID {
+                continue
+            }
+            if method == "item/agentMessage/delta", let delta = params["delta"] as? String {
+                latestText += delta
+            } else if method == "item/completed",
+                      let item = params["item"] as? [String: Any],
+                      item["type"] as? String == "agentMessage",
+                      let text = item["text"] as? String {
+                latestText = text
+            } else if method == "rawResponseItem/completed",
+                      let item = params["item"] as? [String: Any],
+                      item["role"] as? String == "assistant",
+                      let text = readAssistantText(item["content"]) {
+                latestText = text
+            } else if method == "turn/completed" {
+                let json = stripMarkdownFence(latestText)
+                return try JSONDecoder().decode(BookmarkMetadata.self, from: Data(json.utf8))
+            }
+        }
     }
+}
+
+private func responseText(_ data: Data) -> String? {
+    guard let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+    if let text = body["output_text"] as? String { return text }
+    guard let output = body["output"] as? [[String: Any]] else { return nil }
+    for item in output {
+        guard let content = item["content"] as? [[String: Any]] else { continue }
+        for part in content {
+            if let text = part["text"] as? String { return text }
+        }
+    }
+    return nil
+}
+
+private func parseError(_ data: Data) -> String? {
+    guard let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        return String(data: data, encoding: .utf8)
+    }
+    if let error = body["error"] as? [String: Any], let message = error["message"] as? String {
+        return message
+    }
+    return String(data: data, encoding: .utf8)
+}
+
+private func authError(_ message: String) -> NSError {
+    NSError(domain: "ClawliciousAuth", code: 401, userInfo: [NSLocalizedDescriptionKey: message])
+}
+
+private func readAssistantText(_ value: Any?) -> String? {
+    guard let items = value as? [[String: Any]] else { return nil }
+    let text = items.compactMap { $0["text"] as? String }.joined()
+    return text.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+}
+
+private func stripMarkdownFence(_ text: String) -> String {
+    var value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    if value.hasPrefix("```") {
+        value = value.replacing(/^```(?:json)?\s*/.ignoresCase(), with: "")
+        value = value.replacing(/\s*```$/, with: "")
+    }
+    return value
 }
 
 private func firstMatch(in html: String, _ regex: Regex<(Substring, Substring)>) -> String? {

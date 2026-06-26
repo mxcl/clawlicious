@@ -53,4 +53,8 @@ extension String {
         replacing(/\s+/, with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
+
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
+    }
 }

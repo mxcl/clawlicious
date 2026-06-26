@@ -2,6 +2,32 @@ import XCTest
 @testable import Clawlicious
 
 final class BookmarkLibraryTests: XCTestCase {
+    func testCodexAuthReaderPrefersEnvironmentKey() throws {
+        let auth = try CodexAuthReader.read(
+            path: URL(fileURLWithPath: "/tmp/missing-auth.json"),
+            environment: ["OPENAI_API_KEY": "env-key"]
+        )
+
+        XCTAssertEqual(auth, CodexAuth(token: "env-key", source: .environment, scopes: []))
+    }
+
+    func testCodexAuthReaderUsesAuthAPIKeyBeforeOAuthToken() throws {
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory()).appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let authURL = directory.appending(path: "auth.json")
+        try """
+        {
+          "auth_mode": "chatgpt",
+          "OPENAI_API_KEY": "file-key",
+          "tokens": { "access_token": "oauth-token" }
+        }
+        """.write(to: authURL, atomically: true, encoding: .utf8)
+
+        let auth = try CodexAuthReader.read(path: authURL, environment: [:])
+
+        XCTAssertEqual(auth, CodexAuth(token: "file-key", source: .authAPIKey, scopes: [], authMode: "chatgpt"))
+    }
+
     @MainActor
     func testLocalSearchDoesNotInvokeSummarizer() {
         let bookmark = Bookmark(
