@@ -149,6 +149,16 @@ private struct AddBookmarkField: View {
             }
             .buttonStyle(.borderless)
             .help("Add bookmark")
+
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(BrowserBookmarkletServer.shared.agentConnectionText, forType: .string)
+                library.statusLine = "Agent app connection text copied."
+            } label: {
+                Label("Connect Agent App", systemImage: "link")
+            }
+            .buttonStyle(.borderless)
+            .help("Copy agent app connection instructions")
         }
         .controlSize(.small)
     }

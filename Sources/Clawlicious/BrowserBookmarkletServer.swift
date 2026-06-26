@@ -16,6 +16,21 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
         return "javascript:(()=>{open('\(endpoint)'+encodeURIComponent(location.href),'clawlicious','popup,width=420,height=220')})()"
     }
 
+    var agentConnectionText: String {
+        """
+        Clawlicious local saved-links API is available while the app is running.
+
+        Base URL: http://127.0.0.1:\(port)
+        Token: \(token)
+
+        Endpoints:
+        - GET /bookmarks?token=\(token)
+        - GET /search?token=\(token)&q=ai%20tech&from=YYYY-MM-DD&to=YYYY-MM-DD
+
+        Use /search for questions about saved links. Date filters use createdAt.
+        """
+    }
+
     func start() {
         guard listener == nil, let nwPort = NWEndpoint.Port(rawValue: port) else { return }
         do {
@@ -55,39 +70,115 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
                 return
             }
 
-            if let urlString = Self.importURLString(from: request, expectedToken: self.token) {
+            guard let route = Self.route(from: request) else {
+                Self.respond("Bad request.", status: "400 Bad Request", on: connection)
+                return
+            }
+            guard route.query["token"] == self.token else {
+                Self.respond("Forbidden.", status: "403 Forbidden", on: connection)
+                return
+            }
+
+            if route.path == "/add", let urlString = route.query["url"], !urlString.isEmpty {
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(name: .clawliciousImportBookmark, object: urlString)
                 }
                 Self.respond("Sent to Clawlicious.", on: connection)
+            } else if ["/bookmarks", "/search"].contains(route.path) {
+                do {
+                    let bookmarks = try Self.apiBookmarks(route: route, bookmarks: BookmarkStore.live.load())
+                    let data = try JSONEncoder.clawlicious.encode(bookmarks)
+                    Self.respond(data, contentType: "application/json; charset=utf-8", on: connection)
+                } catch {
+                    Self.respond(error.localizedDescription, status: "500 Internal Server Error", on: connection)
+                }
             } else {
-                Self.respond("Forbidden.", status: "403 Forbidden", on: connection)
+                Self.respond("Not found.", status: "404 Not Found", on: connection)
             }
         }
     }
 
     static func importURLString(from request: String, expectedToken: String) -> String? {
-        guard let line = request.components(separatedBy: "\r\n").first else { return nil }
-        let parts = line.split(separator: " ", maxSplits: 2)
-        guard parts.count == 3, parts[0] == "GET" else { return nil }
-        guard let components = URLComponents(string: "http://127.0.0.1\(parts[1])"),
-              components.path == "/add",
-              components.queryItems?.first(where: { $0.name == "token" })?.value == expectedToken,
-              let urlString = components.queryItems?.first(where: { $0.name == "url" })?.value,
+        guard let route = route(from: request),
+              route.path == "/add",
+              route.query["token"] == expectedToken,
+              let urlString = route.query["url"],
               !urlString.isEmpty else {
             return nil
         }
         return urlString
     }
 
+    static func apiBookmarks(from request: String, expectedToken: String, bookmarks: [Bookmark]) -> [Bookmark]? {
+        guard let route = route(from: request),
+              ["/bookmarks", "/search"].contains(route.path),
+              route.query["token"] == expectedToken else {
+            return nil
+        }
+        return apiBookmarks(route: route, bookmarks: bookmarks)
+    }
+
+    private static func route(from request: String) -> Route? {
+        guard let line = request.components(separatedBy: "\r\n").first else { return nil }
+        let parts = line.split(separator: " ", maxSplits: 2)
+        guard parts.count == 3, parts[0] == "GET" else { return nil }
+        guard let components = URLComponents(string: "http://127.0.0.1\(parts[1])"),
+              !components.path.isEmpty else { return nil }
+        return Route(
+            path: components.path,
+            query: Dictionary((components.queryItems ?? []).compactMap { item in
+                item.value.map { (item.name, $0) }
+            }, uniquingKeysWith: { _, new in new })
+        )
+    }
+
+    private static func apiBookmarks(route: Route, bookmarks: [Bookmark]) -> [Bookmark] {
+        let terms = (route.query["q"] ?? "")
+            .split(whereSeparator: \.isWhitespace)
+            .map { $0.lowercased() }
+        let from = route.query["from"].flatMap(day)
+        let to = route.query["to"].flatMap(day).flatMap { Calendar.current.date(byAdding: .day, value: 1, to: $0) }
+
+        return bookmarks
+            .filter { bookmark in
+                let haystack = [
+                    bookmark.title,
+                    bookmark.url.absoluteString,
+                    bookmark.domain,
+                    bookmark.summary,
+                    bookmark.category,
+                    bookmark.tags.joined(separator: " ")
+                ].joined(separator: " ").lowercased()
+                let matchesTerms = terms.allSatisfy { haystack.contains($0) }
+                let matchesFrom = from.map { bookmark.createdAt >= $0 } ?? true
+                let matchesTo = to.map { bookmark.createdAt < $0 } ?? true
+                return matchesTerms && matchesFrom && matchesTo
+            }
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    private static func day(_ value: String) -> Date? {
+        let parts = value.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        return Calendar.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+    }
+
     private static func respond(_ body: String, status: String = "200 OK", on connection: NWConnection) {
         let html = """
         <!doctype html><meta charset="utf-8"><title>Clawlicious</title><body>\(body)</body>
         """
-        let data = Data(html.utf8)
-        let headers = "HTTP/1.1 \(status)\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: \(data.count)\r\nConnection: close\r\n\r\n"
+        respond(Data(html.utf8), status: status, contentType: "text/html; charset=utf-8", on: connection)
+    }
+
+    private static func respond(_ data: Data, status: String = "200 OK", contentType: String, on connection: NWConnection) {
+        let headers = "HTTP/1.1 \(status)\r\nContent-Type: \(contentType)\r\nContent-Length: \(data.count)\r\nConnection: close\r\n\r\n"
         connection.send(content: Data(headers.utf8) + data, completion: .contentProcessed { _ in
             connection.cancel()
         })
+    }
+
+    private struct Route {
+        var path: String
+        var query: [String: String]
     }
 }

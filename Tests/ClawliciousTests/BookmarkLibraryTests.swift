@@ -103,6 +103,22 @@ final class BookmarkLibraryTests: XCTestCase {
         XCTAssertNil(BrowserBookmarkletServer.importURLString(from: request, expectedToken: "bad"))
     }
 
+    func testAgentSearchAPIRequiresTokenAndFiltersBookmarks() throws {
+        var ai = testBookmark(title: "AI Hardware", url: "https://example.com/ai")
+        ai.summary = "Accelerator tech notes"
+        ai.createdAt = try XCTUnwrap(Calendar.current.date(from: DateComponents(year: 2026, month: 6, day: 18)))
+        var old = testBookmark(title: "AI Hardware", url: "https://example.com/old")
+        old.summary = "Accelerator tech notes"
+        old.createdAt = try XCTUnwrap(Calendar.current.date(from: DateComponents(year: 2026, month: 6, day: 10)))
+        let request = "GET /search?token=good&q=AI%20tech&from=2026-06-15&to=2026-06-21 HTTP/1.1\r\n\r\n"
+
+        XCTAssertEqual(
+            BrowserBookmarkletServer.apiBookmarks(from: request, expectedToken: "good", bookmarks: [old, ai])?.map(\.id),
+            [ai.id]
+        )
+        XCTAssertNil(BrowserBookmarkletServer.apiBookmarks(from: request, expectedToken: "bad", bookmarks: [ai]))
+    }
+
     func testEmptyBrowserMarkdownIsRejectedBeforeSummarizing() {
         XCTAssertThrowsError(
             try BrowserModel.requireReadableMarkdown(PageSnapshot(title: "Loaded", description: "", markdown: " \n "))
