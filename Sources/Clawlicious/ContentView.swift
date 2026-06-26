@@ -69,6 +69,7 @@ private struct SidebarView: View {
 
 private struct BookmarkListView: View {
     @ObservedObject var library: BookmarkLibrary
+    @FocusState private var isAddingBookmark: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -90,6 +91,9 @@ private struct BookmarkListView: View {
                 .padding(.vertical, 7)
         }
         .background(LiquidGlassSurface(material: .thinMaterial, tint: .white.opacity(0.025)))
+        .onReceive(NotificationCenter.default.publisher(for: .clawliciousNewBookmark)) { _ in
+            isAddingBookmark = true
+        }
     }
 
     private var addBar: some View {
@@ -98,6 +102,7 @@ private struct BookmarkListView: View {
                 .foregroundStyle(.secondary)
             TextField("Add bookmark URL", text: $library.newURLString)
                 .textFieldStyle(.plain)
+                .focused($isAddingBookmark)
                 .onSubmit { library.addBookmarkFromField() }
             Button {
                 library.addBookmarkFromField()
