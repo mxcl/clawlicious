@@ -106,6 +106,33 @@ final class BookmarkLibrary: ObservableObject {
         }
     }
 
+    func resummarizeBookmark(_ bookmark: Bookmark, page: PageSnapshot) {
+        update(bookmark.id) { bookmark in
+            bookmark.status = .pending
+            bookmark.summary = "Summarizing..."
+            bookmark.error = nil
+            bookmark.contentWarning = nil
+            bookmark.updatedAt = Date()
+        }
+        save()
+        statusLine = "Invoking Codex for \(bookmark.url.bookmarkDomain)..."
+        Task {
+            await summarize(bookmark.id, url: bookmark.url, page: page)
+        }
+    }
+
+    func failResummarizeBookmark(_ bookmark: Bookmark, error: Error) {
+        update(bookmark.id) { bookmark in
+            bookmark.status = .failed
+            bookmark.summary = "Browser content failed: \(error.localizedDescription.cleanedSingleLine)"
+            bookmark.error = error.localizedDescription
+            bookmark.contentWarning = error.localizedDescription.cleanedSingleLine
+            bookmark.updatedAt = Date()
+        }
+        save()
+        statusLine = error.localizedDescription
+    }
+
     func failBookmark(_ id: Bookmark.ID, error: Error) {
         guard bookmarks.first(where: { $0.id == id })?.status == .pending else { return }
         update(id) { bookmark in

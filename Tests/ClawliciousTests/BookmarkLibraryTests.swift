@@ -133,6 +133,25 @@ final class BookmarkLibraryTests: XCTestCase {
     }
 
     @MainActor
+    func testResummarizingBookmarkUsesProvidedBrowserSnapshot() async throws {
+        let bookmark = testBookmark(title: "Old", url: "https://example.com/old")
+        let library = BookmarkLibrary(
+            store: BookmarkStore(
+                load: { [bookmark] },
+                save: { _ in }
+            ),
+            summarizer: SnapshotTitleSummarizer()
+        )
+
+        library.resummarizeBookmark(bookmark, page: PageSnapshot(title: "Fresh Browser", description: "", markdown: "# Fresh Browser"))
+
+        for _ in 0..<20 where library.bookmarks.first?.status != .summarized {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        XCTAssertEqual(library.bookmarks.first?.title, "Fresh Browser")
+    }
+
+    @MainActor
     func testSummaryContentWarningIsSaved() async throws {
         let saved = SavedBookmarks()
         let library = BookmarkLibrary(
@@ -236,6 +255,12 @@ private struct SuccessfulSummarizer: BookmarkSummarizing {
             tags: ["swift", "macos"],
             category: "Development"
         )
+    }
+}
+
+private struct SnapshotTitleSummarizer: BookmarkSummarizing {
+    func summarize(url: URL, page: PageSnapshot) async throws -> BookmarkMetadata {
+        BookmarkMetadata(title: page.title, summary: page.markdown, tags: ["browser"], category: "Browser")
     }
 }
 

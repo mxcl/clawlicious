@@ -36,7 +36,14 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .clawliciousResummarizeBookmark)) { _ in
             if let bookmark = library.selectedBookmark {
-                library.retryBookmark(bookmark)
+                Task {
+                    do {
+                        let page = try await browser.pageSnapshot()
+                        library.resummarizeBookmark(bookmark, page: page)
+                    } catch {
+                        library.failResummarizeBookmark(bookmark, error: error)
+                    }
+                }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .clawliciousNewBookmark)) { _ in
@@ -294,7 +301,7 @@ private struct DetailWebView: View {
         }
         .background(.background)
         .onChange(of: bookmark?.updatedAt) { _, _ in
-            if bookmark?.status == .pending {
+            if bookmark?.status == .pending, browser.extractedMarkdown.isEmpty {
                 browser.reload()
             }
         }
