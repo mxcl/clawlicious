@@ -151,9 +151,7 @@ private struct BookmarkRow: View {
                     .lineLimit(1)
                 Spacer()
                 if let warning = bookmark.contentWarning {
-                    Image(systemName: "exclamationmark.circle.fill")
-                        .foregroundStyle(.red)
-                        .help(warning)
+                    WarningBadge(message: warning)
                 }
                 if bookmark.status == .failed {
                     Button(action: retry) {
@@ -181,6 +179,29 @@ private struct BookmarkRow: View {
         }
         .padding(.vertical, 6)
         .help(bookmark.error ?? bookmark.url.absoluteString)
+    }
+}
+
+private struct WarningBadge: View {
+    var message: String
+    @State private var isPresented = false
+
+    var body: some View {
+        Image(systemName: "exclamationmark.circle.fill")
+            .foregroundStyle(.red)
+            .frame(width: 18, height: 18)
+            .contentShape(Rectangle())
+            .onHover { isPresented = $0 }
+            .popover(isPresented: $isPresented, arrowEdge: .top) {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(width: 240, alignment: .leading)
+                    .padding(10)
+            }
+            .accessibilityLabel("Bookmark content warning")
+            .accessibilityValue(message)
     }
 }
 
