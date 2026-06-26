@@ -64,6 +64,21 @@ final class BrowserModel: ObservableObject {
     }
 
     func pageSnapshot() async throws -> PageSnapshot {
+        try await pageSnapshot(minimumMarkdownLength: 0)
+    }
+
+    func pageSnapshot(minimumMarkdownLength: Int) async throws -> PageSnapshot {
+        for attempt in 0..<6 {
+            let snapshot = try await currentPageSnapshot()
+            if snapshot.markdown.cleanedSingleLine.count >= minimumMarkdownLength || attempt == 5 {
+                return snapshot
+            }
+            try await Task.sleep(for: .milliseconds(300))
+        }
+        return try await currentPageSnapshot()
+    }
+
+    private func currentPageSnapshot() async throws -> PageSnapshot {
         guard let webView else {
             throw NSError(domain: "Clawlicious", code: 1, userInfo: [NSLocalizedDescriptionKey: "Browser is not ready."])
         }
@@ -122,11 +137,12 @@ final class BrowserModel: ObservableObject {
         .replace(/[ \t]+$/gm, "")
         .replace(/\n{3,}/g, "\n\n")
         .trim();
+      const fallback = clean(document.body?.innerText || "");
 
       return {
         title: document.title || "",
         description: document.querySelector("meta[name=description], meta[property='og:description']")?.content || "",
-        markdown
+        markdown: markdown.length >= 80 ? markdown : fallback
       };
     })();
     """#
@@ -194,7 +210,7 @@ struct BookmarkWebView: NSViewRepresentable {
             guard let bookmarkURL else { return }
             Task {
                 do {
-                    let snapshot = try await browser.pageSnapshot()
+                    let snapshot = try await browser.pageSnapshot(minimumMarkdownLength: 80)
                     onPageSnapshot(bookmarkURL, snapshot)
                 } catch {
                     onPageSnapshotFailure(error)
