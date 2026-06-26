@@ -113,6 +113,26 @@ final class BookmarkLibraryTests: XCTestCase {
         XCTAssertEqual(library.bookmarks.first?.title, "Swift Notes")
         XCTAssertEqual(library.bookmarks.first?.tags, ["macos", "swift"])
     }
+
+    @MainActor
+    func testSummaryContentWarningIsSaved() async throws {
+        let saved = SavedBookmarks()
+        let library = BookmarkLibrary(
+            store: BookmarkStore(
+                load: { [] },
+                save: { saved.value = $0 }
+            ),
+            summarizer: WarningSummarizer()
+        )
+
+        library.addBookmark(URL(string: "https://example.com/paywalled")!)
+
+        for _ in 0..<20 where library.bookmarks.first?.contentWarning == nil {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        XCTAssertEqual(library.bookmarks.first?.contentWarning, "Could only read the public excerpt.")
+        XCTAssertEqual(saved.value.first?.contentWarning, "Could only read the public excerpt.")
+    }
 }
 
 private func testBookmark(title: String, url: String) -> Bookmark {
@@ -150,6 +170,18 @@ private struct SuccessfulSummarizer: BookmarkSummarizing {
             summary: "Native bookmark app",
             tags: ["swift", "macos"],
             category: "Development"
+        )
+    }
+}
+
+private struct WarningSummarizer: BookmarkSummarizing {
+    func summarize(url: URL) async throws -> BookmarkMetadata {
+        BookmarkMetadata(
+            title: "Paywalled",
+            summary: "Public excerpt",
+            tags: ["news", "paywall"],
+            category: "News",
+            contentWarning: "Could only read the public excerpt."
         )
     }
 }

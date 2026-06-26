@@ -76,7 +76,8 @@ final class BookmarkLibrary: ObservableObject {
             createdAt: now,
             updatedAt: now,
             status: .pending,
-            error: nil
+            error: nil,
+            contentWarning: nil
         )
         bookmarks.insert(bookmark, at: 0)
         selectedID = bookmark.id
@@ -107,6 +108,7 @@ final class BookmarkLibrary: ObservableObject {
             bookmark.status = .pending
             bookmark.summary = "Summarizing..."
             bookmark.error = nil
+            bookmark.contentWarning = nil
             bookmark.updatedAt = Date()
         }
         save()
@@ -126,6 +128,7 @@ final class BookmarkLibrary: ObservableObject {
                 bookmark.category = metadata.category.isEmpty ? "Uncategorized" : metadata.category
                 bookmark.status = .summarized
                 bookmark.error = nil
+                bookmark.contentWarning = metadata.contentWarning?.cleanedSingleLine.nilIfEmpty
                 bookmark.updatedAt = Date()
             }
             statusLine = "Saved metadata for \(url.bookmarkDomain)."
@@ -134,6 +137,7 @@ final class BookmarkLibrary: ObservableObject {
                 bookmark.status = .failed
                 bookmark.summary = "Codex metadata failed: \(error.localizedDescription.cleanedSingleLine)"
                 bookmark.error = error.localizedDescription
+                bookmark.contentWarning = error.localizedDescription.cleanedSingleLine
                 bookmark.updatedAt = Date()
             }
             statusLine = error.localizedDescription

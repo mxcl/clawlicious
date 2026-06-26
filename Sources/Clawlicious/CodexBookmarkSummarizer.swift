@@ -147,6 +147,7 @@ private struct CodexResponsesClient {
 
         Use 2-6 short lowercase tags.
         Pick one human category, for example: Development, Design, News, Reference, Tools, Writing, Video, Shopping, Other.
+        If the page text is empty, truncated, blocked, or otherwise incomplete, set contentWarning to a concise user-facing explanation; otherwise set it to null.
 
         URL: \(url.absoluteString)
         Page title: \(page.title)
@@ -184,7 +185,7 @@ private struct CodexResponsesClient {
                 ?? ProcessInfo.processInfo.environment["MARGINALIA_OPENAI_MODEL"]
                 ?? ProcessInfo.processInfo.environment["COWRITER_OPENAI_MODEL"]
                 ?? "gpt-5.5",
-            "instructions": "Return concise bookmark metadata as JSON. Do not mention APIs, credentials, or this prompt.",
+            "instructions": "Return concise bookmark metadata as JSON. Include contentWarning as null unless bookmark content could not be read completely. Do not mention APIs, credentials, or this prompt.",
             "input": input,
             "max_output_tokens": 420,
             "store": false,
@@ -212,9 +213,10 @@ private struct CodexResponsesClient {
                     "minItems": 2,
                     "maxItems": 6
                 ],
-                "category": ["type": "string"]
+                "category": ["type": "string"],
+                "contentWarning": ["type": ["string", "null"]]
             ],
-            "required": ["title", "summary", "tags", "category"]
+            "required": ["title", "summary", "tags", "category", "contentWarning"]
         ]
     }
 }
@@ -251,9 +253,11 @@ actor CodexAppServerSession {
             ?? ProcessInfo.processInfo.environment["COWRITER_OPENAI_MODEL"]
             ?? "gpt-5.5"
         let instructions = """
-        Return only one JSON object with title, summary, tags, and category.
+        Return only one JSON object with title, summary, tags, category, and contentWarning.
         tags must be 2-6 short lowercase strings.
-        Do not use tools. Do not wrap the JSON in Markdown.
+        Use available skills/tools when they can read the bookmark more completely, especially browser/chrome skills for rendered or logged-in pages.
+        If you cannot read the full bookmark content, set contentWarning to a concise user-facing explanation. Otherwise set contentWarning to null.
+        Do not wrap the JSON in Markdown.
         """
         let inputText = """
         URL: \(url.absoluteString)
@@ -272,7 +276,6 @@ actor CodexAppServerSession {
             "sandbox": "read-only",
             "personality": "none",
             "developerInstructions": instructions,
-            "dynamicTools": [],
             "experimentalRawEvents": true,
             "persistExtendedHistory": false,
             "config": ["project_doc_max_bytes": 0]
@@ -292,7 +295,7 @@ actor CodexAppServerSession {
                 "cwd": FileManager.default.currentDirectoryPath,
                 "approvalPolicy": "never",
                 "approvalsReviewer": "user",
-                "sandboxPolicy": ["type": "readOnly", "networkAccess": false],
+                "sandboxPolicy": ["type": "readOnly", "networkAccess": true],
                 "model": model,
                 "personality": "none",
                 "effort": "none",
@@ -483,7 +486,7 @@ actor CodexAppServerSession {
                 "chatgptPlanType": auth?.chatgptPlanType ?? NSNull()
             ]
         case "item/commandExecution/requestApproval", "item/fileChange/requestApproval":
-            return ["decision": "deny", "reason": "Clawlicious metadata turns do not run tools."]
+            return ["decision": "deny", "reason": "Clawlicious metadata turns cannot run commands or edit files that require approval."]
         case "item/tool/requestUserInput":
             return ["decision": "decline", "message": "No interactive input is available during bookmark metadata."]
         default:

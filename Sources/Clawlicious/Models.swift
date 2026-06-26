@@ -18,6 +18,7 @@ struct Bookmark: Identifiable, Codable, Hashable, Sendable {
     var updatedAt: Date
     var status: Status
     var error: String?
+    var contentWarning: String? = nil
 }
 
 struct BookmarkMetadata: Codable, Equatable, Sendable {
@@ -25,6 +26,7 @@ struct BookmarkMetadata: Codable, Equatable, Sendable {
     var summary: String
     var tags: [String]
     var category: String
+    var contentWarning: String? = nil
 }
 
 enum BookmarkFilter: Hashable {

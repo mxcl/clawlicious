@@ -150,6 +150,11 @@ private struct BookmarkRow: View {
                     .font(.headline)
                     .lineLimit(1)
                 Spacer()
+                if let warning = bookmark.contentWarning {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .foregroundStyle(.red)
+                        .help(warning)
+                }
                 if bookmark.status == .failed {
                     Button(action: retry) {
                         Image(systemName: "arrow.clockwise")
