@@ -13,7 +13,7 @@ struct ContentView: View {
             BookmarkListView(library: library)
                 .navigationSplitViewColumnWidth(min: 360, ideal: 430, max: 540)
         } detail: {
-            DetailWebView(bookmark: library.selectedBookmark)
+            DetailWebView(library: library, bookmark: library.selectedBookmark)
         }
         .toolbar {
             ToolbarItem(placement: .navigation) {
@@ -253,6 +253,7 @@ private struct TagPill: View {
 }
 
 private struct DetailWebView: View {
+    @ObservedObject var library: BookmarkLibrary
     var bookmark: Bookmark?
     @StateObject private var browser = BrowserModel()
 
@@ -260,7 +261,16 @@ private struct DetailWebView: View {
         GeometryReader { proxy in
             Group {
                 if let bookmark {
-                    BookmarkWebView(url: bookmark.url, browser: browser)
+                    BookmarkWebView(
+                        url: bookmark.url,
+                        browser: browser,
+                        onPageSnapshot: { _, page in
+                            library.summarizeBookmark(bookmark.id, url: bookmark.url, page: page)
+                        },
+                        onPageSnapshotFailure: { error in
+                            library.failBookmark(bookmark.id, error: error)
+                        }
+                    )
                 } else {
                     ContentUnavailableView("No Bookmark", systemImage: "link", description: Text("Add a URL to start."))
                 }
@@ -273,6 +283,11 @@ private struct DetailWebView: View {
                 }
             }
             .background(.background)
+            .onChange(of: bookmark?.updatedAt) { _, _ in
+                if bookmark?.status == .pending {
+                    browser.reload()
+                }
+            }
         }
     }
 }

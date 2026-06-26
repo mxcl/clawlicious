@@ -1,12 +1,11 @@
 import Foundation
 
 protocol BookmarkSummarizing: Sendable {
-    func summarize(url: URL) async throws -> BookmarkMetadata
+    func summarize(url: URL, page: PageSnapshot) async throws -> BookmarkMetadata
 }
 
 struct CodexBookmarkSummarizer: BookmarkSummarizing {
-    func summarize(url: URL) async throws -> BookmarkMetadata {
-        let page = try await PageFetcher.fetch(url)
+    func summarize(url: URL, page: PageSnapshot) async throws -> BookmarkMetadata {
         return try await CodexResponsesClient().metadata(for: url, page: page)
     }
 }
@@ -14,33 +13,7 @@ struct CodexBookmarkSummarizer: BookmarkSummarizing {
 struct PageSnapshot: Sendable {
     var title: String
     var description: String
-    var text: String
-}
-
-enum PageFetcher {
-    static func fetch(_ url: URL) async throws -> PageSnapshot {
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 20
-        request.setValue("Clawlicious/0.1", forHTTPHeaderField: "User-Agent")
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        if let http = response as? HTTPURLResponse, !(200..<400).contains(http.statusCode) {
-            throw NSError(
-                domain: "Clawlicious",
-                code: http.statusCode,
-                userInfo: [NSLocalizedDescriptionKey: "Could not fetch \(url.absoluteString): HTTP \(http.statusCode)."]
-            )
-        }
-
-        let html = String(data: data, encoding: .utf8)
-            ?? String(data: data, encoding: .isoLatin1)
-            ?? ""
-        return PageSnapshot(
-            title: firstMatch(in: html, #/<title[^>]*>(.*?)</title>/#) ?? url.bookmarkDomain,
-            description: firstMatch(in: html, #/<meta\s+[^>]*(?:name|property)=["'](?:description|og:description)["'][^>]*content=["']([^"']+)["'][^>]*>/#) ?? "",
-            text: pageText(from: html)
-        )
-    }
+    var markdown: String
 }
 
 struct CodexAuth: Equatable {
@@ -153,8 +126,8 @@ private struct CodexResponsesClient {
         Page title: \(page.title)
         Page description: \(page.description)
 
-        Page text:
-        \(String(page.text.prefix(12_000)))
+        Page markdown from the app browser:
+        \(String(page.markdown.prefix(12_000)))
         """
 
         var request = URLRequest(url: URL(string: "https://api.openai.com/v1/responses")!)
@@ -263,8 +236,8 @@ actor CodexAppServerSession {
         URL: \(url.absoluteString)
         Page title: \(page.title)
         Page description: \(page.description)
-        Page text:
-        \(String(page.text.prefix(12_000)))
+        Page markdown from the app browser:
+        \(String(page.markdown.prefix(12_000)))
         """
 
         let thread = try await request("thread/start", [
@@ -548,33 +521,4 @@ private func stripMarkdownFence(_ text: String) -> String {
         value = value.replacing(/\s*```$/, with: "")
     }
     return value
-}
-
-private func firstMatch(in html: String, _ regex: Regex<(Substring, Substring)>) -> String? {
-    html.firstMatch(of: regex).map { match in
-        String(match.1)
-            .replacingOccurrences(of: "\n", with: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .htmlDecoded
-    }
-}
-
-private func pageText(from html: String) -> String {
-    html
-        .replacing(#/<script[\s\S]*?</script>/#, with: " ")
-        .replacing(#/<style[\s\S]*?</style>/#, with: " ")
-        .replacing(#/<[^>]+>/#, with: " ")
-        .replacing(/\s+/, with: " ")
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-        .htmlDecoded
-}
-
-private extension String {
-    var htmlDecoded: String {
-        replacingOccurrences(of: "&amp;", with: "&")
-            .replacingOccurrences(of: "&lt;", with: "<")
-            .replacingOccurrences(of: "&gt;", with: ">")
-            .replacingOccurrences(of: "&quot;", with: "\"")
-            .replacingOccurrences(of: "&#39;", with: "'")
-    }
 }

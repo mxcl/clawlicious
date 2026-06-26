@@ -82,15 +82,36 @@ final class BookmarkLibrary: ObservableObject {
         bookmarks.insert(bookmark, at: 0)
         selectedID = bookmark.id
         save()
-        statusLine = "Invoking Codex for \(url.bookmarkDomain)..."
-
-        Task {
-            await summarize(bookmark.id, url: url)
-        }
+        statusLine = "Loading \(url.bookmarkDomain) in browser..."
     }
 
     func retryBookmark(_ bookmark: Bookmark) {
         retrySummary(bookmark.id, url: bookmark.url)
+    }
+
+    func summarizeBookmark(_ id: Bookmark.ID, url: URL, page: PageSnapshot) {
+        guard let bookmark = bookmarks.first(where: { $0.id == id }),
+              bookmark.url == url,
+              bookmark.status == .pending else {
+            return
+        }
+        statusLine = "Invoking Codex for \(url.bookmarkDomain)..."
+        Task {
+            await summarize(id, url: url, page: page)
+        }
+    }
+
+    func failBookmark(_ id: Bookmark.ID, error: Error) {
+        guard bookmarks.first(where: { $0.id == id })?.status == .pending else { return }
+        update(id) { bookmark in
+            bookmark.status = .failed
+            bookmark.summary = "Browser content failed: \(error.localizedDescription.cleanedSingleLine)"
+            bookmark.error = error.localizedDescription
+            bookmark.contentWarning = error.localizedDescription.cleanedSingleLine
+            bookmark.updatedAt = Date()
+        }
+        save()
+        statusLine = error.localizedDescription
     }
 
     func deleteBookmark(_ id: Bookmark.ID) {
@@ -112,15 +133,12 @@ final class BookmarkLibrary: ObservableObject {
             bookmark.updatedAt = Date()
         }
         save()
-        statusLine = "Retrying Codex for \(url.bookmarkDomain)..."
-        Task {
-            await summarize(id, url: url)
-        }
+        statusLine = "Reloading \(url.bookmarkDomain) in browser..."
     }
 
-    private func summarize(_ id: Bookmark.ID, url: URL) async {
+    private func summarize(_ id: Bookmark.ID, url: URL, page: PageSnapshot) async {
         do {
-            let metadata = try await summarizer.summarize(url: url)
+            let metadata = try await summarizer.summarize(url: url, page: page)
             update(id) { bookmark in
                 bookmark.title = metadata.title.isEmpty ? bookmark.title : metadata.title
                 bookmark.summary = metadata.summary

@@ -100,6 +100,7 @@ final class BookmarkLibraryTests: XCTestCase {
         )
 
         library.addBookmark(bookmark.url)
+        library.summarizeBookmark(bookmark.id, url: bookmark.url, page: .test)
 
         for _ in 0..<20 where library.bookmarks.first?.status != .summarized {
             try await Task.sleep(for: .milliseconds(50))
@@ -121,6 +122,7 @@ final class BookmarkLibraryTests: XCTestCase {
         )
 
         library.addBookmark(URL(string: "https://example.com/paywalled")!)
+        library.summarizeBookmark(library.bookmarks[0].id, url: library.bookmarks[0].url, page: .test)
 
         for _ in 0..<20 where library.bookmarks.first?.contentWarning == nil {
             try await Task.sleep(for: .milliseconds(50))
@@ -152,14 +154,14 @@ private final class SavedBookmarks: @unchecked Sendable {
 }
 
 private struct FailingSummarizer: BookmarkSummarizing {
-    func summarize(url: URL) async throws -> BookmarkMetadata {
+    func summarize(url: URL, page: PageSnapshot) async throws -> BookmarkMetadata {
         XCTFail("Search must stay local and AI-free.")
         return BookmarkMetadata(title: "", summary: "", tags: [], category: "")
     }
 }
 
 private struct SuccessfulSummarizer: BookmarkSummarizing {
-    func summarize(url: URL) async throws -> BookmarkMetadata {
+    func summarize(url: URL, page: PageSnapshot) async throws -> BookmarkMetadata {
         BookmarkMetadata(
             title: "Swift Notes",
             summary: "Native bookmark app",
@@ -170,7 +172,7 @@ private struct SuccessfulSummarizer: BookmarkSummarizing {
 }
 
 private struct WarningSummarizer: BookmarkSummarizing {
-    func summarize(url: URL) async throws -> BookmarkMetadata {
+    func summarize(url: URL, page: PageSnapshot) async throws -> BookmarkMetadata {
         BookmarkMetadata(
             title: "Paywalled",
             summary: "Public excerpt",
@@ -179,4 +181,12 @@ private struct WarningSummarizer: BookmarkSummarizing {
             contentWarning: "Could only read the public excerpt."
         )
     }
+}
+
+private extension PageSnapshot {
+    static let test = PageSnapshot(
+        title: "Browser title",
+        description: "Browser description",
+        markdown: "# Browser markdown"
+    )
 }
