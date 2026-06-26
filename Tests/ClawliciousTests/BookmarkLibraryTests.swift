@@ -265,6 +265,33 @@ final class BookmarkLibraryTests: XCTestCase {
         }
         XCTAssertEqual(library.bookmarks.first?.tags, ["design-systems", "swift-ui"])
     }
+
+    @MainActor
+    func testSummarizerReceivesCurrentCategoriesAndTags() async throws {
+        var design = testBookmark(title: "Design", url: "https://example.com/design")
+        design.category = "Design"
+        design.tags = ["design", "swift"]
+        var tools = testBookmark(title: "Tools", url: "https://example.com/tools")
+        tools.category = "Tools"
+        tools.tags = ["macos"]
+        let savedBookmarks = [design, tools]
+        let summarizer = RecordingSummarizer()
+        let library = BookmarkLibrary(
+            store: BookmarkStore(
+                load: { savedBookmarks },
+                save: { _ in }
+            ),
+            summarizer: summarizer
+        )
+
+        library.retryBookmark(design)
+        library.summarizeBookmark(design.id, url: design.url, page: .test)
+
+        for _ in 0..<20 where library.bookmarks.first(where: { $0.id == design.id })?.status != .summarized {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        XCTAssertEqual(summarizer.context, BookmarkLibraryContext(categories: ["Design", "Tools"], tags: ["design", "macos", "swift"]))
+    }
 }
 
 private func testBookmark(title: String, url: String) -> Bookmark {
@@ -289,14 +316,14 @@ private final class SavedBookmarks: @unchecked Sendable {
 }
 
 private struct FailingSummarizer: BookmarkSummarizing {
-    func summarize(url: URL, page: PageSnapshot) async throws -> BookmarkMetadata {
+    func summarize(url: URL, page: PageSnapshot, context: BookmarkLibraryContext) async throws -> BookmarkMetadata {
         XCTFail("Search must stay local and AI-free.")
         return BookmarkMetadata(title: "", summary: "", tags: [], category: "")
     }
 }
 
 private struct SuccessfulSummarizer: BookmarkSummarizing {
-    func summarize(url: URL, page: PageSnapshot) async throws -> BookmarkMetadata {
+    func summarize(url: URL, page: PageSnapshot, context: BookmarkLibraryContext) async throws -> BookmarkMetadata {
         BookmarkMetadata(
             title: "Swift Notes",
             summary: "Native bookmark app",
@@ -307,13 +334,13 @@ private struct SuccessfulSummarizer: BookmarkSummarizing {
 }
 
 private struct SnapshotTitleSummarizer: BookmarkSummarizing {
-    func summarize(url: URL, page: PageSnapshot) async throws -> BookmarkMetadata {
+    func summarize(url: URL, page: PageSnapshot, context: BookmarkLibraryContext) async throws -> BookmarkMetadata {
         BookmarkMetadata(title: page.title, summary: page.markdown, tags: ["browser"], category: "Browser")
     }
 }
 
 private struct WarningSummarizer: BookmarkSummarizing {
-    func summarize(url: URL, page: PageSnapshot) async throws -> BookmarkMetadata {
+    func summarize(url: URL, page: PageSnapshot, context: BookmarkLibraryContext) async throws -> BookmarkMetadata {
         BookmarkMetadata(
             title: "Paywalled",
             summary: "Public excerpt",
@@ -325,14 +352,23 @@ private struct WarningSummarizer: BookmarkSummarizing {
 }
 
 private struct LowercaseCategorySummarizer: BookmarkSummarizing {
-    func summarize(url: URL, page: PageSnapshot) async throws -> BookmarkMetadata {
+    func summarize(url: URL, page: PageSnapshot, context: BookmarkLibraryContext) async throws -> BookmarkMetadata {
         BookmarkMetadata(title: "New", summary: "Summary", tags: [], category: "design systems")
     }
 }
 
 private struct MixedCaseTagSummarizer: BookmarkSummarizing {
-    func summarize(url: URL, page: PageSnapshot) async throws -> BookmarkMetadata {
+    func summarize(url: URL, page: PageSnapshot, context: BookmarkLibraryContext) async throws -> BookmarkMetadata {
         BookmarkMetadata(title: "New", summary: "Summary", tags: ["Design Systems", "Swift/UI", ""], category: "Design")
+    }
+}
+
+private final class RecordingSummarizer: BookmarkSummarizing, @unchecked Sendable {
+    var context: BookmarkLibraryContext?
+
+    func summarize(url: URL, page: PageSnapshot, context: BookmarkLibraryContext) async throws -> BookmarkMetadata {
+        self.context = context
+        return BookmarkMetadata(title: "Recorded", summary: "Recorded", tags: ["recorded"], category: "Recorded")
     }
 }
 

@@ -177,7 +177,7 @@ final class BookmarkLibrary: ObservableObject {
 
     private func summarize(_ id: Bookmark.ID, url: URL, page: PageSnapshot) async {
         do {
-            let metadata = try await summarizer.summarize(url: url, page: page)
+            let metadata = try await summarizer.summarize(url: url, page: page, context: BookmarkLibraryContext(categories: categories, tags: tags))
             update(id) { bookmark in
                 bookmark.title = metadata.title.isEmpty ? bookmark.title : metadata.title
                 bookmark.summary = metadata.summary

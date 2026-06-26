@@ -1,12 +1,12 @@
 import Foundation
 
 protocol BookmarkSummarizing: Sendable {
-    func summarize(url: URL, page: PageSnapshot) async throws -> BookmarkMetadata
+    func summarize(url: URL, page: PageSnapshot, context: BookmarkLibraryContext) async throws -> BookmarkMetadata
 }
 
 struct CodexBookmarkSummarizer: BookmarkSummarizing {
-    func summarize(url: URL, page: PageSnapshot) async throws -> BookmarkMetadata {
-        return try await CodexResponsesClient().metadata(for: url, page: page)
+    func summarize(url: URL, page: PageSnapshot, context: BookmarkLibraryContext) async throws -> BookmarkMetadata {
+        return try await CodexResponsesClient().metadata(for: url, page: page, context: context)
     }
 }
 
@@ -14,6 +14,11 @@ struct PageSnapshot: Sendable {
     var title: String
     var description: String
     var markdown: String
+}
+
+struct BookmarkLibraryContext: Equatable, Sendable {
+    var categories: [String]
+    var tags: [String]
 }
 
 struct CodexAuth: Equatable {
@@ -110,21 +115,24 @@ enum CodexAuthReader {
 }
 
 private struct CodexResponsesClient {
-    func metadata(for url: URL, page: PageSnapshot) async throws -> BookmarkMetadata {
+    func metadata(for url: URL, page: PageSnapshot, context: BookmarkLibraryContext) async throws -> BookmarkMetadata {
         let auth = try CodexAuthReader.read()
         if auth.source == .authAccessToken, !auth.scopes.isEmpty, !auth.scopes.contains("api.responses.write") {
-            return try await CodexAppServerSession.shared.metadata(for: url, page: page, auth: auth)
+            return try await CodexAppServerSession.shared.metadata(for: url, page: page, context: context, auth: auth)
         }
         let prompt = """
         Summarize this bookmark for a local macOS bookmark library.
 
         Use 2-6 short lowercase tags.
         Pick one human category, for example: Development, Design, News, Reference, Tools, Writing, Video, Shopping, Other.
+        Prefer current categories and tags when they fit.
         If the page text is empty, truncated, blocked, or otherwise incomplete, set contentWarning to a concise user-facing explanation; otherwise set it to null.
 
         URL: \(url.absoluteString)
         Page title: \(page.title)
         Page description: \(page.description)
+        Current categories: \(jsonList(context.categories))
+        Current tags: \(jsonList(context.tags))
 
         Page markdown from the app browser:
         \(String(page.markdown.prefix(12_000)))
@@ -141,7 +149,7 @@ private struct CodexResponsesClient {
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             let message = parseError(data) ?? "OpenAI Responses API failed with HTTP \(http.statusCode)."
             if message.range(of: "api.responses.write|insufficient permissions|missing scopes", options: .regularExpression) != nil {
-                return try await CodexAppServerSession.shared.metadata(for: url, page: page, auth: auth)
+                return try await CodexAppServerSession.shared.metadata(for: url, page: page, context: context, auth: auth)
             }
             throw NSError(domain: "Clawlicious", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: message])
         }
@@ -216,7 +224,7 @@ actor CodexAppServerSession {
         try? await startIfNeeded(auth: auth)
     }
 
-    func metadata(for url: URL, page: PageSnapshot, auth: CodexAuth) async throws -> BookmarkMetadata {
+    func metadata(for url: URL, page: PageSnapshot, context: BookmarkLibraryContext, auth: CodexAuth) async throws -> BookmarkMetadata {
         try await startIfNeeded(auth: auth)
         var latestText = ""
         var activeTurnID: String?
@@ -228,6 +236,7 @@ actor CodexAppServerSession {
         let instructions = """
         Return only one JSON object with title, summary, tags, category, and contentWarning.
         tags must be 2-6 short lowercase strings.
+        Prefer current categories and tags when they fit.
         Use available skills/tools when they can read the bookmark more completely, especially browser/chrome skills for rendered or logged-in pages.
         If you cannot read the full bookmark content, set contentWarning to a concise user-facing explanation. Otherwise set contentWarning to null.
         Do not wrap the JSON in Markdown.
@@ -236,6 +245,8 @@ actor CodexAppServerSession {
         URL: \(url.absoluteString)
         Page title: \(page.title)
         Page description: \(page.description)
+        Current categories: \(jsonList(context.categories))
+        Current tags: \(jsonList(context.tags))
         Page markdown from the app browser:
         \(String(page.markdown.prefix(12_000)))
         """
@@ -502,6 +513,14 @@ private func parseError(_ data: Data) -> String? {
         return message
     }
     return String(data: data, encoding: .utf8)
+}
+
+private func jsonList(_ values: [String]) -> String {
+    guard let data = try? JSONEncoder().encode(values),
+          let text = String(data: data, encoding: .utf8) else {
+        return "[]"
+    }
+    return text
 }
 
 private func authError(_ message: String) -> NSError {
