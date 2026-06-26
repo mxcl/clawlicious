@@ -175,6 +175,29 @@ final class BookmarkLibraryTests: XCTestCase {
         }
         XCTAssertEqual(library.bookmarks.first?.category, "Design Systems")
     }
+
+    @MainActor
+    func testTagsAreKebabCased() async throws {
+        var bookmark = testBookmark(title: "Old", url: "https://example.com/old")
+        bookmark.tags = ["Swift UI", "swift_ui", "macOS!", ""]
+        let savedBookmark = bookmark
+        let library = BookmarkLibrary(
+            store: BookmarkStore(
+                load: { [savedBookmark] },
+                save: { _ in }
+            ),
+            summarizer: MixedCaseTagSummarizer()
+        )
+
+        XCTAssertEqual(library.tags, ["macos", "swift-ui"])
+        library.retryBookmark(bookmark)
+        library.summarizeBookmark(bookmark.id, url: bookmark.url, page: .test)
+
+        for _ in 0..<20 where library.bookmarks.first?.status != .summarized {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        XCTAssertEqual(library.bookmarks.first?.tags, ["design-systems", "swift-ui"])
+    }
 }
 
 private func testBookmark(title: String, url: String) -> Bookmark {
@@ -231,6 +254,12 @@ private struct WarningSummarizer: BookmarkSummarizing {
 private struct LowercaseCategorySummarizer: BookmarkSummarizing {
     func summarize(url: URL, page: PageSnapshot) async throws -> BookmarkMetadata {
         BookmarkMetadata(title: "New", summary: "Summary", tags: [], category: "design systems")
+    }
+}
+
+private struct MixedCaseTagSummarizer: BookmarkSummarizing {
+    func summarize(url: URL, page: PageSnapshot) async throws -> BookmarkMetadata {
+        BookmarkMetadata(title: "New", summary: "Summary", tags: ["Design Systems", "Swift/UI", ""], category: "Design")
     }
 }
 

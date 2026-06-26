@@ -21,6 +21,7 @@ final class BookmarkLibrary: ObservableObject {
         do {
             bookmarks = try store.load().map {
                 var bookmark = $0
+                bookmark.tags = normalizeTags(bookmark.tags)
                 bookmark.category = normalizeCategory(bookmark.category)
                 return bookmark
             }
@@ -146,7 +147,7 @@ final class BookmarkLibrary: ObservableObject {
             update(id) { bookmark in
                 bookmark.title = metadata.title.isEmpty ? bookmark.title : metadata.title
                 bookmark.summary = metadata.summary
-                bookmark.tags = sortedUnique(metadata.tags.map(normalizeTag).filter { !$0.isEmpty })
+                bookmark.tags = normalizeTags(metadata.tags)
                 bookmark.category = normalizeCategory(metadata.category)
                 bookmark.status = .summarized
                 bookmark.error = nil
@@ -214,10 +215,15 @@ private func normalizedURL(_ raw: String) -> URL? {
     return url
 }
 
+private func normalizeTags(_ values: [String]) -> [String] {
+    sortedUnique(values.map(normalizeTag).filter { !$0.isEmpty })
+}
+
 private func normalizeTag(_ value: String) -> String {
     value.trimmingCharacters(in: .whitespacesAndNewlines)
-        .replacing(/\s+/, with: "-")
         .lowercased()
+        .replacing(/[^a-z0-9]+/, with: "-")
+        .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
 }
 
 private func normalizeCategory(_ value: String) -> String {
