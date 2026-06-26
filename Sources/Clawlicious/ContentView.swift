@@ -330,7 +330,11 @@ private struct BrowserControls: View {
             .help(browser.isLoading ? "Stop" : "Reload")
 
             Button {
-                browser.toggleContentMode()
+                if browser.contentMode == .html {
+                    Task { await browser.showMarkdown() }
+                } else {
+                    browser.showHTML()
+                }
             } label: {
                 Image(systemName: browser.contentMode == .html ? "doc.plaintext" : "globe")
             }

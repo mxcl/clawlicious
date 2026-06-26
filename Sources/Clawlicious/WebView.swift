@@ -52,8 +52,15 @@ final class BrowserModel: ObservableObject {
         webView?.stopLoading()
     }
 
-    func toggleContentMode() {
-        contentMode = contentMode == .html ? .markdown : .html
+    func showHTML() {
+        contentMode = .html
+    }
+
+    func showMarkdown() async {
+        if extractedMarkdown.isEmpty {
+            _ = try? await pageSnapshot()
+        }
+        contentMode = .markdown
     }
 
     func pageSnapshot() async throws -> PageSnapshot {
