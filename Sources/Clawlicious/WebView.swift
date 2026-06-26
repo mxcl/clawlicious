@@ -11,15 +11,17 @@ final class BrowserModel: ObservableObject {
     private weak var webView: WKWebView?
 
     func attach(_ webView: WKWebView) {
+        guard self.webView !== webView else { return }
         self.webView = webView
         sync(from: webView)
     }
 
     func sync(from webView: WKWebView) {
-        canGoBack = webView.canGoBack
-        canGoForward = webView.canGoForward
-        isLoading = webView.isLoading
-        address = webView.url?.absoluteString ?? address
+        let nextAddress = webView.url?.absoluteString ?? address
+        if canGoBack != webView.canGoBack { canGoBack = webView.canGoBack }
+        if canGoForward != webView.canGoForward { canGoForward = webView.canGoForward }
+        if isLoading != webView.isLoading { isLoading = webView.isLoading }
+        if address != nextAddress { address = nextAddress }
     }
 
     func goBack() {
