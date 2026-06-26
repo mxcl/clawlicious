@@ -43,6 +43,16 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .clawliciousNewBookmark)) { _ in
             isAddingBookmark = true
         }
+        .onReceive(NotificationCenter.default.publisher(for: .clawliciousImportBookmark)) { notification in
+            guard let urlString = notification.object as? String else { return }
+            library.addBookmark(urlString)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .clawliciousBrowserImportStatus)) { notification in
+            if let message = notification.object as? String {
+                library.statusLine = message
+            }
+        }
         .alert("Delete Bookmark?", isPresented: deleteConfirmationPresented, presenting: bookmarkPendingDeletion) { bookmark in
             Button("Delete", role: .destructive) {
                 library.deleteBookmark(bookmark.id)

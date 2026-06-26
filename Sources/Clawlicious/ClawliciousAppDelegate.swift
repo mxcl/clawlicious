@@ -2,6 +2,8 @@ import AppKit
 
 extension Notification.Name {
     static let clawliciousNewBookmark = Notification.Name("ClawliciousNewBookmark")
+    static let clawliciousImportBookmark = Notification.Name("ClawliciousImportBookmark")
+    static let clawliciousBrowserImportStatus = Notification.Name("ClawliciousBrowserImportStatus")
     static let clawliciousDeleteBookmark = Notification.Name("ClawliciousDeleteBookmark")
     static let clawliciousResummarizeBookmark = Notification.Name("ClawliciousResummarizeBookmark")
     static let clawliciousBookmarkSelectionChanged = Notification.Name("ClawliciousBookmarkSelectionChanged")
@@ -20,6 +22,7 @@ final class ClawliciousAppDelegate: NSObject, NSApplicationDelegate {
             self?.installMainMenu()
             NSApp.activate(ignoringOtherApps: true)
         }
+        BrowserBookmarkletServer.shared.start()
         Task {
             await CodexAppServerSession.shared.warmUpIfNeeded()
         }
@@ -48,6 +51,9 @@ final class ClawliciousAppDelegate: NSObject, NSApplicationDelegate {
         let bookmark = NSMenu()
         let new = bookmark.addItem(withTitle: "New Bookmark", action: #selector(MenuTarget.newBookmark(_:)), keyEquivalent: "n")
         new.target = menuTarget
+        let copyBookmarklet = bookmark.addItem(withTitle: "Copy Browser Bookmarklet", action: #selector(MenuTarget.copyBrowserBookmarklet(_:)), keyEquivalent: "")
+        copyBookmarklet.target = menuTarget
+        bookmark.addItem(.separator())
         let resummarize = bookmark.addItem(withTitle: "Resummarize Bookmark", action: #selector(MenuTarget.resummarizeBookmark(_:)), keyEquivalent: "")
         resummarize.target = menuTarget
         let delete = bookmark.addItem(withTitle: "Delete Bookmark", action: #selector(MenuTarget.deleteBookmark(_:)), keyEquivalent: "\u{8}")
@@ -183,6 +189,15 @@ private final class MenuTarget: NSObject, NSMenuItemValidation {
 
     @objc func newBookmark(_ sender: Any?) {
         NotificationCenter.default.post(name: .clawliciousNewBookmark, object: nil)
+    }
+
+    @objc func copyBrowserBookmarklet(_ sender: Any?) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(BrowserBookmarkletServer.shared.bookmarklet, forType: .string)
+        NotificationCenter.default.post(
+            name: .clawliciousBrowserImportStatus,
+            object: "Browser bookmarklet copied. Create a browser bookmark and paste this as its URL."
+        )
     }
 
     @objc func deleteBookmark(_ sender: Any?) {

@@ -77,6 +77,33 @@ final class BookmarkLibraryTests: XCTestCase {
     }
 
     @MainActor
+    func testAddingBookmarkFromRawStringNormalizesURL() {
+        let saved = SavedBookmarks()
+        let library = BookmarkLibrary(
+            store: BookmarkStore(
+                load: { [] },
+                save: { saved.value = $0 }
+            ),
+            summarizer: FailingSummarizer()
+        )
+
+        XCTAssertTrue(library.addBookmark("example.com/swift"))
+
+        XCTAssertEqual(library.bookmarks.first?.url.absoluteString, "https://example.com/swift")
+        XCTAssertEqual(saved.value.first?.url.absoluteString, "https://example.com/swift")
+    }
+
+    func testBrowserBookmarkletRequestRequiresTokenAndExtractsURL() {
+        let request = "GET /add?token=good&url=https%3A%2F%2Fexample.com%2Fswift%3Fa%3D1%26b%3D2 HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"
+
+        XCTAssertEqual(
+            BrowserBookmarkletServer.importURLString(from: request, expectedToken: "good"),
+            "https://example.com/swift?a=1&b=2"
+        )
+        XCTAssertNil(BrowserBookmarkletServer.importURLString(from: request, expectedToken: "bad"))
+    }
+
+    @MainActor
     func testAddingExistingFailedBookmarkRetriesSummary() async throws {
         let bookmark = Bookmark(
             id: UUID(),

@@ -49,13 +49,20 @@ final class BookmarkLibrary: ObservableObject {
     }
 
     func addBookmarkFromField() {
-        let raw = newURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        if addBookmark(newURLString) {
+            newURLString = ""
+        }
+    }
+
+    @discardableResult
+    func addBookmark(_ rawValue: String) -> Bool {
+        let raw = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = normalizedURL(raw) else {
             statusLine = "Enter a valid URL."
-            return
+            return false
         }
-        newURLString = ""
         addBookmark(url)
+        return true
     }
 
     func addBookmark(_ url: URL) {
