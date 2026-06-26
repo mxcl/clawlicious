@@ -104,6 +104,27 @@ final class BookmarkLibraryTests: XCTestCase {
     }
 
     @MainActor
+    func testSnapshotFromDifferentURLDoesNotSummarizeSelectedBookmark() {
+        let bookmark = testBookmark(title: "Pending", url: "https://example.com/current")
+        let library = BookmarkLibrary(
+            store: BookmarkStore(
+                load: {
+                    var pending = bookmark
+                    pending.status = .pending
+                    return [pending]
+                },
+                save: { _ in }
+            ),
+            summarizer: SuccessfulSummarizer()
+        )
+
+        library.summarizeBookmark(bookmark.id, url: URL(string: "https://example.com/old")!, page: .test)
+
+        XCTAssertEqual(library.bookmarks.first?.status, .pending)
+        XCTAssertEqual(library.bookmarks.first?.title, "Pending")
+    }
+
+    @MainActor
     func testAddingExistingFailedBookmarkRetriesSummary() async throws {
         let bookmark = Bookmark(
             id: UUID(),

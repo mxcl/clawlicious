@@ -157,14 +157,18 @@ struct BookmarkWebView: NSViewRepresentable {
         context.coordinator.onPageSnapshotFailure = onPageSnapshotFailure
         guard context.coordinator.bookmarkURL != url else { return }
         context.coordinator.bookmarkURL = url
-        guard let url else { return }
+        guard let url else {
+            context.coordinator.bookmarkNavigation = nil
+            return
+        }
         browser.prepareForNewPage()
-        webView.load(URLRequest(url: url))
+        context.coordinator.bookmarkNavigation = webView.load(URLRequest(url: url))
     }
 
     @MainActor
     final class Coordinator: NSObject, WKNavigationDelegate {
         var bookmarkURL: URL?
+        var bookmarkNavigation: WKNavigation?
         var onPageSnapshot: (URL, PageSnapshot) -> Void = { _, _ in }
         var onPageSnapshotFailure: (Error) -> Void = { _ in }
         private let browser: BrowserModel
@@ -188,6 +192,7 @@ struct BookmarkWebView: NSViewRepresentable {
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             browser.sync(from: webView)
+            guard let navigation, let bookmarkNavigation, navigation === bookmarkNavigation else { return }
             guard let url = webView.url else { return }
             Task {
                 do {

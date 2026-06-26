@@ -297,8 +297,8 @@ private struct DetailWebView: View {
                     BookmarkWebView(
                         url: bookmark.url,
                         browser: browser,
-                        onPageSnapshot: { _, page in
-                            library.summarizeBookmark(bookmark.id, url: bookmark.url, page: page)
+                        onPageSnapshot: { loadedURL, page in
+                            library.summarizeBookmark(bookmark.id, url: loadedURL, page: page)
                         },
                         onPageSnapshotFailure: { error in
                             library.failBookmark(bookmark.id, error: error)
