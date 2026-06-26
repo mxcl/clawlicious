@@ -10,15 +10,10 @@ struct ContentView: View {
             SidebarView(library: library)
                 .navigationSplitViewColumnWidth(min: 210, ideal: 240, max: 290)
         } content: {
-            BookmarkListView(library: library)
+            BookmarkListView(library: library, isAddingBookmark: $isAddingBookmark)
                 .navigationSplitViewColumnWidth(min: 360, ideal: 430, max: 540)
         } detail: {
             DetailWebView(library: library, bookmark: library.selectedBookmark)
-        }
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                AddBookmarkTitleBar(library: library, isFocused: $isAddingBookmark)
-            }
         }
         .background {
             LiquidGlassSurface(material: .ultraThinMaterial, tint: .black.opacity(0.14))
@@ -101,23 +96,20 @@ private struct SidebarView: View {
     }
 }
 
-private struct AddBookmarkTitleBar: View {
+private struct AddBookmarkField: View {
     @ObservedObject var library: BookmarkLibrary
     var isFocused: FocusState<Bool>.Binding
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "link.badge.plus")
-                .foregroundStyle(.secondary)
             TextField("Add bookmark URL", text: $library.newURLString)
-                .textFieldStyle(.plain)
+                .textFieldStyle(.roundedBorder)
                 .focused(isFocused)
                 .onSubmit { library.addBookmarkFromField() }
-                .frame(width: 300)
             Button {
                 library.addBookmarkFromField()
             } label: {
-                Image(systemName: "plus.circle.fill")
+                Image(systemName: "plus")
             }
             .buttonStyle(.borderless)
             .help("Add bookmark")
@@ -128,9 +120,14 @@ private struct AddBookmarkTitleBar: View {
 
 private struct BookmarkListView: View {
     @ObservedObject var library: BookmarkLibrary
+    var isAddingBookmark: FocusState<Bool>.Binding
 
     var body: some View {
         VStack(spacing: 0) {
+            AddBookmarkField(library: library, isFocused: isAddingBookmark)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+            Divider()
             List(library.visibleBookmarks, selection: $library.selectedID) { bookmark in
                 BookmarkRow(bookmark: bookmark) {
                     library.retryBookmark(bookmark)
@@ -263,48 +260,36 @@ private struct DetailWebView: View {
     @StateObject private var browser = BrowserModel()
 
     var body: some View {
-        GeometryReader { proxy in
-            Group {
-                if let bookmark {
-                    BookmarkWebView(
-                        url: bookmark.url,
-                        browser: browser,
-                        onPageSnapshot: { _, page in
-                            library.summarizeBookmark(bookmark.id, url: bookmark.url, page: page)
-                        },
-                        onPageSnapshotFailure: { error in
-                            library.failBookmark(bookmark.id, error: error)
-                        }
-                    )
-                } else {
-                    ContentUnavailableView("No Bookmark", systemImage: "link", description: Text("Add a URL to start."))
-                }
-            }
-            .toolbar {
-                if bookmark != nil {
-                    ToolbarItem(placement: .primaryAction) {
-                        BrowserTitleBarControls(browser: browser, columnWidth: proxy.size.width)
+        Group {
+            if let bookmark {
+                BookmarkWebView(
+                    url: bookmark.url,
+                    browser: browser,
+                    onPageSnapshot: { _, page in
+                        library.summarizeBookmark(bookmark.id, url: bookmark.url, page: page)
+                    },
+                    onPageSnapshotFailure: { error in
+                        library.failBookmark(bookmark.id, error: error)
                     }
-                }
+                )
+            } else {
+                ContentUnavailableView("No Bookmark", systemImage: "link", description: Text("Add a URL to start."))
             }
-            .background(.background)
-            .onChange(of: bookmark?.updatedAt) { _, _ in
-                if bookmark?.status == .pending {
-                    browser.reload()
+        }
+        .toolbar {
+            if bookmark != nil {
+                ToolbarItem(placement: .primaryAction) {
+                    BrowserControls(browser: browser)
                 }
             }
         }
-    }
-}
-
-private struct BrowserTitleBarControls: View {
-    @ObservedObject var browser: BrowserModel
-    var columnWidth: CGFloat
-
-    var body: some View {
-        BrowserControls(browser: browser)
-            .frame(maxWidth: 620)
-            .frame(width: max(420, columnWidth), alignment: .center)
+        .toolbarRole(.editor)
+        .background(.background)
+        .onChange(of: bookmark?.updatedAt) { _, _ in
+            if bookmark?.status == .pending {
+                browser.reload()
+            }
+        }
     }
 }
 
@@ -336,14 +321,6 @@ private struct BrowserControls: View {
             }
             .help(browser.isLoading ? "Stop" : "Reload")
 
-            Text(browser.address.isEmpty ? "Website" : browser.address)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .textSelection(.enabled)
-                .frame(minWidth: 300, idealWidth: 520)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: 5))
         }
         .buttonStyle(.borderless)
         .controlSize(.small)
