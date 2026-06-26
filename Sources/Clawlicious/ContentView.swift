@@ -14,18 +14,6 @@ struct ContentView: View {
         } detail: {
             DetailWebView(bookmark: library.selectedBookmark)
         }
-        .searchable(text: $library.searchText, placement: .toolbar, prompt: "Search bookmarks")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    library.addBookmarkFromField()
-                } label: {
-                    Label("Add Bookmark", systemImage: "plus")
-                }
-                .keyboardShortcut("n", modifiers: [.command])
-                .help("Add bookmark")
-            }
-        }
         .background {
             LiquidGlassSurface(material: .ultraThinMaterial, tint: .black.opacity(0.14))
                 .ignoresSafeArea()
@@ -90,6 +78,7 @@ private struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
+        .searchable(text: $library.searchText, placement: .sidebar, prompt: "Search bookmarks")
     }
 
     private func filterRow(_ filter: BookmarkFilter, icon: String) -> some View {
@@ -230,16 +219,60 @@ private struct TagPill: View {
 
 private struct DetailWebView: View {
     var bookmark: Bookmark?
+    @StateObject private var browser = BrowserModel()
 
     var body: some View {
         Group {
             if let bookmark {
-                BookmarkWebView(url: bookmark.url)
+                VStack(spacing: 0) {
+                    BrowserControls(browser: browser)
+                    Divider()
+                    BookmarkWebView(url: bookmark.url, browser: browser)
+                }
             } else {
                 ContentUnavailableView("No Bookmark", systemImage: "link", description: Text("Add a URL to start."))
             }
         }
         .background(.background)
+    }
+}
+
+private struct BrowserControls: View {
+    @ObservedObject var browser: BrowserModel
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button {
+                browser.goBack()
+            } label: {
+                Image(systemName: "chevron.left")
+            }
+            .disabled(!browser.canGoBack)
+            .help("Back")
+
+            Button {
+                browser.goForward()
+            } label: {
+                Image(systemName: "chevron.right")
+            }
+            .disabled(!browser.canGoForward)
+            .help("Forward")
+
+            Button {
+                browser.isLoading ? browser.stopLoading() : browser.reload()
+            } label: {
+                Image(systemName: browser.isLoading ? "xmark" : "arrow.clockwise")
+            }
+            .help(browser.isLoading ? "Stop" : "Reload")
+
+            TextField("Website", text: $browser.address)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit { browser.loadAddress() }
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(LiquidGlassSurface(material: .thinMaterial, tint: .white.opacity(0.025)))
     }
 }
 

@@ -28,6 +28,11 @@ final class BookmarkLibraryTests: XCTestCase {
         XCTAssertEqual(auth, CodexAuth(token: "file-key", source: .authAPIKey, scopes: [], authMode: "chatgpt"))
     }
 
+    func testBrowserURLAddsHTTPSForBareDomains() {
+        XCTAssertEqual(browserURL(from: " example.com/path "), URL(string: "https://example.com/path"))
+        XCTAssertNil(browserURL(from: ""))
+    }
+
     @MainActor
     func testLocalSearchDoesNotInvokeSummarizer() {
         let bookmark = Bookmark(
