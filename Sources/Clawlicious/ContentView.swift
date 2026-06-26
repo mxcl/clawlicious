@@ -284,14 +284,17 @@ private struct DetailWebView: View {
                 ContentUnavailableView("No Bookmark", systemImage: "link", description: Text("Add a URL to start."))
             }
         }
-        .toolbar {
+        .safeAreaInset(edge: .top, spacing: 0) {
             if bookmark != nil {
-                ToolbarItem(placement: .primaryAction) {
+                HStack {
                     BrowserControls(browser: browser)
+                    Spacer()
                 }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(.bar)
             }
         }
-        .toolbarRole(.editor)
         .background(.background)
         .onChange(of: bookmark?.updatedAt) { _, _ in
             if bookmark?.status == .pending {
