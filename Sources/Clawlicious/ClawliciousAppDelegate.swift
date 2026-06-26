@@ -17,6 +17,9 @@ final class ClawliciousAppDelegate: NSObject, NSApplicationDelegate {
             self?.installMainMenu()
             NSApp.activate(ignoringOtherApps: true)
         }
+        Task {
+            await CodexAppServerSession.shared.warmUpIfNeeded()
+        }
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {

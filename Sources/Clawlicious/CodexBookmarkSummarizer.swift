@@ -140,7 +140,7 @@ private struct CodexResponsesClient {
     func metadata(for url: URL, page: PageSnapshot) async throws -> BookmarkMetadata {
         let auth = try CodexAuthReader.read()
         if auth.source == .authAccessToken, !auth.scopes.isEmpty, !auth.scopes.contains("api.responses.write") {
-            return try await CodexAppServerClient().metadata(for: url, page: page, auth: auth)
+            return try await CodexAppServerSession.shared.metadata(for: url, page: page, auth: auth)
         }
         let prompt = """
         Summarize this bookmark for a local macOS bookmark library.
@@ -167,7 +167,7 @@ private struct CodexResponsesClient {
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             let message = parseError(data) ?? "OpenAI Responses API failed with HTTP \(http.statusCode)."
             if message.range(of: "api.responses.write|insufficient permissions|missing scopes", options: .regularExpression) != nil {
-                return try await CodexAppServerClient().metadata(for: url, page: page, auth: auth)
+                return try await CodexAppServerSession.shared.metadata(for: url, page: page, auth: auth)
             }
             throw NSError(domain: "Clawlicious", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: message])
         }
@@ -219,100 +219,32 @@ private struct CodexResponsesClient {
     }
 }
 
-private struct CodexAppServerClient {
+actor CodexAppServerSession {
+    static let shared = CodexAppServerSession()
+
+    private var process: Process?
+    private var input: FileHandle?
+    private var lineBuffer: [String] = []
+    private var lineWaiter: CheckedContinuation<String?, Never>?
+    private var readError: String?
+    private var didFinishReading = false
+    private var nextID = 1
+    private var auth: CodexAuth?
+    private var accountId: String?
+
+    func warmUpIfNeeded() async {
+        guard let auth = try? CodexAuthReader.read(),
+              auth.source == .authAccessToken,
+              !auth.scopes.contains("api.responses.write") else {
+            return
+        }
+        try? await startIfNeeded(auth: auth)
+    }
+
     func metadata(for url: URL, page: PageSnapshot, auth: CodexAuth) async throws -> BookmarkMetadata {
-        guard auth.source == .authAccessToken, let accountId = auth.chatgptAccountId else {
-            throw authError("This Codex credential cannot call the public Responses API, and it is not a ChatGPT OAuth credential Clawlicious can bridge through Codex app-server.")
-        }
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = [(ProcessInfo.processInfo.environment["CLAWLICIOUS_CODEX_COMMAND"] ?? "codex"), "app-server", "--listen", "stdio://"]
-        process.environment = ProcessInfo.processInfo.environment.merging([
-            "OPENAI_API_KEY": "",
-            "CODEX_API_KEY": ""
-        ]) { _, new in new }
-
-        let stdin = Pipe()
-        let stdout = Pipe()
-        process.standardInput = stdin
-        process.standardOutput = stdout
-        process.standardError = Pipe()
-        try process.run()
-        defer {
-            process.terminate()
-        }
-
-        let input = stdin.fileHandleForWriting
-        var lines = stdout.fileHandleForReading.bytes.lines.makeAsyncIterator()
-        var nextID = 1
+        try await startIfNeeded(auth: auth)
         var latestText = ""
         var activeTurnID: String?
-
-        func write(_ object: [String: Any]) throws {
-            let data = try JSONSerialization.data(withJSONObject: object)
-            input.write(data)
-            input.write(Data("\n".utf8))
-        }
-
-        func result(for method: String) -> [String: Any] {
-            switch method {
-            case "account/chatgptAuthTokens/refresh":
-                return [
-                    "accessToken": auth.token,
-                    "chatgptAccountId": accountId,
-                    "chatgptPlanType": auth.chatgptPlanType ?? NSNull()
-                ]
-            case "item/commandExecution/requestApproval", "item/fileChange/requestApproval":
-                return ["decision": "deny", "reason": "Clawlicious metadata turns do not run tools."]
-            case "item/tool/requestUserInput":
-                return ["decision": "decline", "message": "No interactive input is available during bookmark metadata."]
-            default:
-                return [:]
-            }
-        }
-
-        func nextMessage() async throws -> [String: Any] {
-            while let line = try await lines.next() {
-                guard let data = line.data(using: .utf8),
-                      let message = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                    continue
-                }
-                if let id = message["id"], let method = message["method"] as? String {
-                    try write(["id": id, "result": result(for: method)])
-                    continue
-                }
-                return message
-            }
-            throw NSError(domain: "Clawlicious", code: 1, userInfo: [NSLocalizedDescriptionKey: "Codex app-server exited before completing bookmark metadata."])
-        }
-
-        func request(_ method: String, _ params: [String: Any]) async throws -> [String: Any] {
-            let id = nextID
-            nextID += 1
-            try write(["id": id, "method": method, "params": params])
-            while true {
-                let message = try await nextMessage()
-                if let responseID = message["id"] as? Int, responseID == id {
-                    if let error = message["error"] as? [String: Any] {
-                        throw NSError(domain: "Clawlicious", code: 1, userInfo: [NSLocalizedDescriptionKey: error["message"] as? String ?? "Codex app-server request failed."])
-                    }
-                    return message["result"] as? [String: Any] ?? [:]
-                }
-            }
-        }
-
-        _ = try await request("initialize", [
-            "clientInfo": ["name": "clawlicious", "title": "Clawlicious", "version": "0.1.0"],
-            "capabilities": ["experimentalApi": true]
-        ])
-        try write(["method": "initialized"])
-        _ = try await request("account/login/start", [
-            "type": "chatgptAuthTokens",
-            "accessToken": auth.token,
-            "chatgptAccountId": accountId,
-            "chatgptPlanType": auth.chatgptPlanType ?? NSNull()
-        ])
 
         let model = ProcessInfo.processInfo.environment["CLAWLICIOUS_OPENAI_MODEL"]
             ?? ProcessInfo.processInfo.environment["MARGINALIA_OPENAI_MODEL"]
@@ -411,6 +343,165 @@ private struct CodexAppServerClient {
                 return try JSONDecoder().decode(BookmarkMetadata.self, from: Data(json.utf8))
             }
         }
+    }
+
+    private func startIfNeeded(auth: CodexAuth) async throws {
+        guard auth.source == .authAccessToken, let accountId = auth.chatgptAccountId else {
+            throw authError("This Codex credential cannot call the public Responses API, and it is not a ChatGPT OAuth credential Clawlicious can bridge through Codex app-server.")
+        }
+        if process?.isRunning == true, self.auth?.token == auth.token {
+            return
+        }
+        stop()
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = [(ProcessInfo.processInfo.environment["CLAWLICIOUS_CODEX_COMMAND"] ?? "codex"), "app-server", "--listen", "stdio://"]
+        process.environment = ProcessInfo.processInfo.environment.merging([
+            "OPENAI_API_KEY": "",
+            "CODEX_API_KEY": ""
+        ]) { _, new in new }
+
+        let stdin = Pipe()
+        let stdout = Pipe()
+        process.standardInput = stdin
+        process.standardOutput = stdout
+        process.standardError = Pipe()
+        try process.run()
+
+        Task {
+            do {
+                for try await line in stdout.fileHandleForReading.bytes.lines {
+                    enqueue(line)
+                }
+                finishReading()
+            } catch {
+                finishReading(error.localizedDescription)
+            }
+        }
+
+        self.process = process
+        input = stdin.fileHandleForWriting
+        lineBuffer = []
+        lineWaiter = nil
+        readError = nil
+        didFinishReading = false
+        nextID = 1
+        self.auth = auth
+        self.accountId = accountId
+
+        _ = try await request("initialize", [
+            "clientInfo": ["name": "clawlicious", "title": "Clawlicious", "version": "0.1.0"],
+            "capabilities": ["experimentalApi": true]
+        ])
+        try write(["method": "initialized"])
+        _ = try await request("account/login/start", [
+            "type": "chatgptAuthTokens",
+            "accessToken": auth.token,
+            "chatgptAccountId": accountId,
+            "chatgptPlanType": auth.chatgptPlanType ?? NSNull()
+        ])
+    }
+
+    private func request(_ method: String, _ params: [String: Any]) async throws -> [String: Any] {
+        let id = nextID
+        nextID += 1
+        try write(["id": id, "method": method, "params": params])
+        while true {
+            let message = try await nextMessage()
+            if let responseID = message["id"] as? Int, responseID == id {
+                if let error = message["error"] as? [String: Any] {
+                    throw NSError(domain: "Clawlicious", code: 1, userInfo: [NSLocalizedDescriptionKey: error["message"] as? String ?? "Codex app-server request failed."])
+                }
+                return message["result"] as? [String: Any] ?? [:]
+            }
+        }
+    }
+
+    private func nextMessage() async throws -> [String: Any] {
+        while let line = try await nextLine() {
+            guard let data = line.data(using: .utf8),
+                  let message = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                continue
+            }
+            if let id = message["id"], let method = message["method"] as? String {
+                try write(["id": id, "result": result(for: method)])
+                continue
+            }
+            return message
+        }
+        stop()
+        throw NSError(domain: "Clawlicious", code: 1, userInfo: [NSLocalizedDescriptionKey: "Codex app-server exited before completing bookmark metadata."])
+    }
+
+    private func enqueue(_ line: String) {
+        if let waiter = lineWaiter {
+            lineWaiter = nil
+            waiter.resume(returning: line)
+        } else {
+            lineBuffer.append(line)
+        }
+    }
+
+    private func finishReading(_ error: String? = nil) {
+        readError = error
+        didFinishReading = true
+        lineWaiter?.resume(returning: nil)
+        lineWaiter = nil
+    }
+
+    private func nextLine() async throws -> String? {
+        if !lineBuffer.isEmpty {
+            return lineBuffer.removeFirst()
+        }
+        if let readError {
+            throw NSError(domain: "Clawlicious", code: 1, userInfo: [NSLocalizedDescriptionKey: readError])
+        }
+        if didFinishReading {
+            return nil
+        }
+        return await withCheckedContinuation { continuation in
+            lineWaiter = continuation
+        }
+    }
+
+    private func write(_ object: [String: Any]) throws {
+        guard let input else {
+            throw NSError(domain: "Clawlicious", code: 1, userInfo: [NSLocalizedDescriptionKey: "Codex app-server is not running."])
+        }
+        let data = try JSONSerialization.data(withJSONObject: object)
+        input.write(data)
+        input.write(Data("\n".utf8))
+    }
+
+    private func result(for method: String) -> [String: Any] {
+        switch method {
+        case "account/chatgptAuthTokens/refresh":
+            return [
+                "accessToken": auth?.token ?? "",
+                "chatgptAccountId": accountId ?? "",
+                "chatgptPlanType": auth?.chatgptPlanType ?? NSNull()
+            ]
+        case "item/commandExecution/requestApproval", "item/fileChange/requestApproval":
+            return ["decision": "deny", "reason": "Clawlicious metadata turns do not run tools."]
+        case "item/tool/requestUserInput":
+            return ["decision": "decline", "message": "No interactive input is available during bookmark metadata."]
+        default:
+            return [:]
+        }
+    }
+
+    private func stop() {
+        input = nil
+        lineBuffer = []
+        lineWaiter?.resume(returning: nil)
+        lineWaiter = nil
+        readError = nil
+        didFinishReading = true
+        process?.terminate()
+        process = nil
+        auth = nil
+        accountId = nil
     }
 }
 
