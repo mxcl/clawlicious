@@ -248,21 +248,34 @@ private struct DetailWebView: View {
     @StateObject private var browser = BrowserModel()
 
     var body: some View {
-        Group {
-            if let bookmark {
-                BookmarkWebView(url: bookmark.url, browser: browser)
-            } else {
-                ContentUnavailableView("No Bookmark", systemImage: "link", description: Text("Add a URL to start."))
-            }
-        }
-        .toolbar {
-            if bookmark != nil {
-                ToolbarItem(placement: .principal) {
-                    BrowserControls(browser: browser)
+        GeometryReader { proxy in
+            Group {
+                if let bookmark {
+                    BookmarkWebView(url: bookmark.url, browser: browser)
+                } else {
+                    ContentUnavailableView("No Bookmark", systemImage: "link", description: Text("Add a URL to start."))
                 }
             }
+            .toolbar {
+                if bookmark != nil {
+                    ToolbarItem(placement: .primaryAction) {
+                        BrowserTitleBarControls(browser: browser, columnWidth: proxy.size.width)
+                    }
+                }
+            }
+            .background(.background)
         }
-        .background(.background)
+    }
+}
+
+private struct BrowserTitleBarControls: View {
+    @ObservedObject var browser: BrowserModel
+    var columnWidth: CGFloat
+
+    var body: some View {
+        BrowserControls(browser: browser)
+            .frame(maxWidth: 620)
+            .frame(width: max(420, columnWidth), alignment: .center)
     }
 }
 
@@ -305,7 +318,6 @@ private struct BrowserControls: View {
         }
         .buttonStyle(.borderless)
         .controlSize(.small)
-        .frame(minWidth: 420, idealWidth: 620)
     }
 }
 
