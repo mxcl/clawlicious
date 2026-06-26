@@ -297,13 +297,14 @@ private struct DetailWebView: View {
                     BookmarkWebView(
                         url: bookmark.url,
                         browser: browser,
-                        onPageSnapshot: { loadedURL, page in
-                            library.summarizeBookmark(bookmark.id, url: loadedURL, page: page)
+                        onPageSnapshot: { requestedURL, page in
+                            library.summarizeBookmark(bookmark.id, url: requestedURL, page: page)
                         },
                         onPageSnapshotFailure: { error in
                             library.failBookmark(bookmark.id, error: error)
                         }
                     )
+                    .id(bookmark.id)
                     .opacity(browser.contentMode == .html ? 1 : 0)
                     .allowsHitTesting(browser.contentMode == .html)
 
