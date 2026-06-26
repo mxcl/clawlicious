@@ -3,7 +3,14 @@ import WebKit
 
 @MainActor
 final class BrowserModel: ObservableObject {
+    enum ContentMode {
+        case html
+        case markdown
+    }
+
     @Published var address = ""
+    @Published var contentMode: ContentMode = .html
+    @Published private(set) var extractedMarkdown = ""
     @Published private(set) var canGoBack = false
     @Published private(set) var canGoForward = false
     @Published private(set) var isLoading = false
@@ -24,6 +31,11 @@ final class BrowserModel: ObservableObject {
         if address != nextAddress { address = nextAddress }
     }
 
+    func prepareForNewPage() {
+        contentMode = .html
+        extractedMarkdown = ""
+    }
+
     func goBack() {
         webView?.goBack()
     }
@@ -40,6 +52,10 @@ final class BrowserModel: ObservableObject {
         webView?.stopLoading()
     }
 
+    func toggleContentMode() {
+        contentMode = contentMode == .html ? .markdown : .html
+    }
+
     func pageSnapshot() async throws -> PageSnapshot {
         guard let webView else {
             throw NSError(domain: "Clawlicious", code: 1, userInfo: [NSLocalizedDescriptionKey: "Browser is not ready."])
@@ -47,11 +63,13 @@ final class BrowserModel: ObservableObject {
         guard let result = try await webView.evaluateJavaScript(Self.markdownSnapshotScript) as? [String: Any] else {
             throw NSError(domain: "Clawlicious", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not read browser page content."])
         }
-        return PageSnapshot(
+        let snapshot = PageSnapshot(
             title: result["title"] as? String ?? webView.url?.bookmarkDomain ?? "Untitled",
             description: result["description"] as? String ?? "",
             markdown: result["markdown"] as? String ?? ""
         )
+        extractedMarkdown = snapshot.markdown
+        return snapshot
     }
 
     private static let markdownSnapshotScript = #"""
@@ -133,6 +151,7 @@ struct BookmarkWebView: NSViewRepresentable {
         guard context.coordinator.bookmarkURL != url else { return }
         context.coordinator.bookmarkURL = url
         guard let url else { return }
+        browser.prepareForNewPage()
         webView.load(URLRequest(url: url))
     }
 

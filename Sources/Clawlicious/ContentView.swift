@@ -262,16 +262,24 @@ private struct DetailWebView: View {
     var body: some View {
         Group {
             if let bookmark {
-                BookmarkWebView(
-                    url: bookmark.url,
-                    browser: browser,
-                    onPageSnapshot: { _, page in
-                        library.summarizeBookmark(bookmark.id, url: bookmark.url, page: page)
-                    },
-                    onPageSnapshotFailure: { error in
-                        library.failBookmark(bookmark.id, error: error)
+                ZStack {
+                    BookmarkWebView(
+                        url: bookmark.url,
+                        browser: browser,
+                        onPageSnapshot: { _, page in
+                            library.summarizeBookmark(bookmark.id, url: bookmark.url, page: page)
+                        },
+                        onPageSnapshotFailure: { error in
+                            library.failBookmark(bookmark.id, error: error)
+                        }
+                    )
+                    .opacity(browser.contentMode == .html ? 1 : 0)
+                    .allowsHitTesting(browser.contentMode == .html)
+
+                    if browser.contentMode == .markdown {
+                        MarkdownSourceView(markdown: browser.extractedMarkdown)
                     }
-                )
+                }
             } else {
                 ContentUnavailableView("No Bookmark", systemImage: "link", description: Text("Add a URL to start."))
             }
@@ -321,9 +329,30 @@ private struct BrowserControls: View {
             }
             .help(browser.isLoading ? "Stop" : "Reload")
 
+            Button {
+                browser.toggleContentMode()
+            } label: {
+                Image(systemName: browser.contentMode == .html ? "doc.plaintext" : "globe")
+            }
+            .help(browser.contentMode == .html ? "Show extracted Markdown" : "Show webpage")
         }
         .buttonStyle(.borderless)
         .controlSize(.small)
+    }
+}
+
+private struct MarkdownSourceView: View {
+    var markdown: String
+
+    var body: some View {
+        ScrollView {
+            Text(markdown.isEmpty ? "No markdown extracted yet." : markdown)
+                .font(.system(.body, design: .monospaced))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+        }
+        .background(.background)
     }
 }
 
