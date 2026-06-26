@@ -250,13 +250,16 @@ private struct DetailWebView: View {
     var body: some View {
         Group {
             if let bookmark {
-                VStack(spacing: 0) {
-                    BrowserControls(browser: browser)
-                    Divider()
-                    BookmarkWebView(url: bookmark.url, browser: browser)
-                }
+                BookmarkWebView(url: bookmark.url, browser: browser)
             } else {
                 ContentUnavailableView("No Bookmark", systemImage: "link", description: Text("Add a URL to start."))
+            }
+        }
+        .toolbar {
+            if bookmark != nil {
+                ToolbarItem(placement: .principal) {
+                    BrowserControls(browser: browser)
+                }
             }
         }
         .background(.background)
@@ -294,11 +297,11 @@ private struct BrowserControls: View {
             TextField("Website", text: $browser.address)
                 .textFieldStyle(.roundedBorder)
                 .onSubmit { browser.loadAddress() }
+                .frame(minWidth: 300, idealWidth: 520)
         }
         .buttonStyle(.borderless)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(LiquidGlassSurface(material: .thinMaterial, tint: .white.opacity(0.025)))
+        .controlSize(.small)
+        .frame(minWidth: 420, idealWidth: 620)
     }
 }
 
