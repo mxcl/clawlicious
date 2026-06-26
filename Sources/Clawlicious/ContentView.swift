@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct ContentView: View {
@@ -15,13 +16,6 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 360, ideal: 430, max: 540)
         } detail: {
             DetailWebView(library: library, bookmark: library.selectedBookmark, browser: browser)
-        }
-        .toolbar {
-            if library.selectedBookmark != nil {
-                ToolbarItem(placement: .primaryAction) {
-                    BrowserControls(browser: browser)
-                }
-            }
         }
         .background {
             LiquidGlassSurface(material: .ultraThinMaterial, tint: .black.opacity(0.14))
@@ -300,11 +294,109 @@ private struct DetailWebView: View {
             }
         }
         .background(.background)
+        .background {
+            GeometryReader { proxy in
+                TitlebarBrowserControls(
+                    browser: browser,
+                    isVisible: bookmark != nil,
+                    width: proxy.size.width
+                )
+            }
+        }
         .onChange(of: bookmark?.updatedAt) { _, _ in
             if bookmark?.status == .pending, browser.extractedMarkdown.isEmpty {
                 browser.reload()
             }
         }
+    }
+}
+
+private struct TitlebarBrowserControls: NSViewRepresentable {
+    @ObservedObject var browser: BrowserModel
+    var isVisible: Bool
+    var width: CGFloat
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> NSView {
+        NSView(frame: .zero)
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        DispatchQueue.main.async {
+            context.coordinator.update(window: view.window, browser: browser, isVisible: isVisible, width: width)
+        }
+    }
+
+    static func dismantleNSView(_ view: NSView, coordinator: Coordinator) {
+        coordinator.removeAccessory()
+    }
+
+    @MainActor
+    final class Coordinator {
+        private weak var window: NSWindow?
+        private var controller: NSTitlebarAccessoryViewController?
+        private var hostingView: NSHostingView<TitlebarBrowserControlsContent>?
+
+        func update(window newWindow: NSWindow?, browser: BrowserModel, isVisible: Bool, width: CGFloat) {
+            guard isVisible, let newWindow else {
+                removeAccessory()
+                return
+            }
+
+            if window !== newWindow {
+                removeAccessory()
+                window = newWindow
+            }
+
+            let width = max(0, width)
+            let rootView = TitlebarBrowserControlsContent(browser: browser, width: width)
+
+            if let hostingView {
+                hostingView.rootView = rootView
+                hostingView.frame.size = NSSize(width: width, height: Self.height)
+            } else {
+                let hostingView = NSHostingView(rootView: rootView)
+                hostingView.frame = NSRect(x: 0, y: 0, width: width, height: Self.height)
+                self.hostingView = hostingView
+
+                let controller = NSTitlebarAccessoryViewController()
+                controller.layoutAttribute = .right
+                controller.view = hostingView
+                self.controller = controller
+                newWindow.addTitlebarAccessoryViewController(controller)
+            }
+        }
+
+        func removeAccessory() {
+            guard let controller else { return }
+            if let window, let index = window.titlebarAccessoryViewControllers.firstIndex(where: { $0 === controller }) {
+                window.removeTitlebarAccessoryViewController(at: index)
+            } else {
+                controller.removeFromParent()
+            }
+            self.controller = nil
+            self.hostingView = nil
+        }
+
+        private static let height: CGFloat = 52
+    }
+}
+
+private struct TitlebarBrowserControlsContent: View {
+    @ObservedObject var browser: BrowserModel
+    var width: CGFloat
+
+    var body: some View {
+        HStack {
+            BrowserControls(browser: browser)
+            Spacer(minLength: 0)
+        }
+        .frame(width: width, height: 52, alignment: .leading)
+        .padding(.leading, 10)
+        .allowsHitTesting(true)
     }
 }
 
