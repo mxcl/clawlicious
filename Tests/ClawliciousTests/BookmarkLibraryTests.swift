@@ -111,6 +111,28 @@ final class BookmarkLibraryTests: XCTestCase {
     }
 
     @MainActor
+    func testRetryingSummarizedBookmarkWaitsForBrowserSnapshot() async throws {
+        let bookmark = testBookmark(title: "Old", url: "https://example.com/old")
+        let library = BookmarkLibrary(
+            store: BookmarkStore(
+                load: { [bookmark] },
+                save: { _ in }
+            ),
+            summarizer: SuccessfulSummarizer()
+        )
+
+        library.retryBookmark(bookmark)
+
+        XCTAssertEqual(library.bookmarks.first?.status, .pending)
+        library.summarizeBookmark(bookmark.id, url: bookmark.url, page: .test)
+
+        for _ in 0..<20 where library.bookmarks.first?.status != .summarized {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        XCTAssertEqual(library.bookmarks.first?.title, "Swift Notes")
+    }
+
+    @MainActor
     func testSummaryContentWarningIsSaved() async throws {
         let saved = SavedBookmarks()
         let library = BookmarkLibrary(

@@ -3,6 +3,7 @@ import AppKit
 extension Notification.Name {
     static let clawliciousNewBookmark = Notification.Name("ClawliciousNewBookmark")
     static let clawliciousDeleteBookmark = Notification.Name("ClawliciousDeleteBookmark")
+    static let clawliciousResummarizeBookmark = Notification.Name("ClawliciousResummarizeBookmark")
     static let clawliciousBookmarkSelectionChanged = Notification.Name("ClawliciousBookmarkSelectionChanged")
 }
 
@@ -47,6 +48,8 @@ final class ClawliciousAppDelegate: NSObject, NSApplicationDelegate {
         let bookmark = NSMenu()
         let new = bookmark.addItem(withTitle: "New Bookmark", action: #selector(MenuTarget.newBookmark(_:)), keyEquivalent: "n")
         new.target = menuTarget
+        let resummarize = bookmark.addItem(withTitle: "Resummarize Bookmark", action: #selector(MenuTarget.resummarizeBookmark(_:)), keyEquivalent: "")
+        resummarize.target = menuTarget
         let delete = bookmark.addItem(withTitle: "Delete Bookmark", action: #selector(MenuTarget.deleteBookmark(_:)), keyEquivalent: "\u{8}")
         delete.target = menuTarget
         delete.keyEquivalentModifierMask = []
@@ -186,8 +189,17 @@ private final class MenuTarget: NSObject, NSMenuItemValidation {
         NotificationCenter.default.post(name: .clawliciousDeleteBookmark, object: nil)
     }
 
+    @objc func resummarizeBookmark(_ sender: Any?) {
+        NotificationCenter.default.post(name: .clawliciousResummarizeBookmark, object: nil)
+    }
+
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        menuItem.action == #selector(deleteBookmark(_:)) ? hasSelectedBookmark : true
+        switch menuItem.action {
+        case #selector(deleteBookmark(_:)), #selector(resummarizeBookmark(_:)):
+            hasSelectedBookmark
+        default:
+            true
+        }
     }
 
     @objc private func bookmarkSelectionChanged(_ notification: Notification) {

@@ -31,6 +31,11 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .clawliciousDeleteBookmark)) { _ in
             bookmarkPendingDeletion = library.selectedBookmark
         }
+        .onReceive(NotificationCenter.default.publisher(for: .clawliciousResummarizeBookmark)) { _ in
+            if let bookmark = library.selectedBookmark {
+                library.retryBookmark(bookmark)
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .clawliciousNewBookmark)) { _ in
             isAddingBookmark = true
         }
