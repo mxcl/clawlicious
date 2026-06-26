@@ -14,7 +14,8 @@ struct WindowChrome: NSViewRepresentable {
 
     private func configure(_ window: NSWindow?) {
         guard let window else { return }
-        window.title = "Clawlicious"
+        window.title = ""
+        window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
         window.toolbarStyle = .unified

@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var library = BookmarkLibrary()
     @State private var bookmarkPendingDeletion: Bookmark?
+    @FocusState private var isAddingBookmark: Bool
 
     var body: some View {
         NavigationSplitView {
@@ -14,6 +15,11 @@ struct ContentView: View {
         } detail: {
             DetailWebView(bookmark: library.selectedBookmark)
         }
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                AddBookmarkTitleBar(library: library, isFocused: $isAddingBookmark)
+            }
+        }
         .background {
             LiquidGlassSurface(material: .ultraThinMaterial, tint: .black.opacity(0.14))
                 .ignoresSafeArea()
@@ -24,6 +30,9 @@ struct ContentView: View {
         .onChange(of: library.selectedID) { _, _ in publishBookmarkSelection() }
         .onReceive(NotificationCenter.default.publisher(for: .clawliciousDeleteBookmark)) { _ in
             bookmarkPendingDeletion = library.selectedBookmark
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .clawliciousNewBookmark)) { _ in
+            isAddingBookmark = true
         }
         .alert("Delete Bookmark?", isPresented: deleteConfirmationPresented, presenting: bookmarkPendingDeletion) { bookmark in
             Button("Delete", role: .destructive) {
@@ -87,14 +96,36 @@ private struct SidebarView: View {
     }
 }
 
+private struct AddBookmarkTitleBar: View {
+    @ObservedObject var library: BookmarkLibrary
+    var isFocused: FocusState<Bool>.Binding
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "link.badge.plus")
+                .foregroundStyle(.secondary)
+            TextField("Add bookmark URL", text: $library.newURLString)
+                .textFieldStyle(.plain)
+                .focused(isFocused)
+                .onSubmit { library.addBookmarkFromField() }
+                .frame(width: 300)
+            Button {
+                library.addBookmarkFromField()
+            } label: {
+                Image(systemName: "plus.circle.fill")
+            }
+            .buttonStyle(.borderless)
+            .help("Add bookmark")
+        }
+        .controlSize(.small)
+    }
+}
+
 private struct BookmarkListView: View {
     @ObservedObject var library: BookmarkLibrary
-    @FocusState private var isAddingBookmark: Bool
 
     var body: some View {
         VStack(spacing: 0) {
-            addBar
-            Divider()
             List(library.visibleBookmarks, selection: $library.selectedID) { bookmark in
                 BookmarkRow(bookmark: bookmark) {
                     library.retryBookmark(bookmark)
@@ -114,28 +145,6 @@ private struct BookmarkListView: View {
                 .padding(.vertical, 7)
         }
         .background(LiquidGlassSurface(material: .thinMaterial, tint: .white.opacity(0.025)))
-        .onReceive(NotificationCenter.default.publisher(for: .clawliciousNewBookmark)) { _ in
-            isAddingBookmark = true
-        }
-    }
-
-    private var addBar: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "link.badge.plus")
-                .foregroundStyle(.secondary)
-            TextField("Add bookmark URL", text: $library.newURLString)
-                .textFieldStyle(.plain)
-                .focused($isAddingBookmark)
-                .onSubmit { library.addBookmarkFromField() }
-            Button {
-                library.addBookmarkFromField()
-            } label: {
-                Image(systemName: "plus.circle.fill")
-            }
-            .buttonStyle(.borderless)
-            .help("Add bookmark")
-        }
-        .padding(10)
     }
 }
 
