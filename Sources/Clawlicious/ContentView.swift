@@ -294,10 +294,14 @@ private struct BrowserControls: View {
             }
             .help(browser.isLoading ? "Stop" : "Reload")
 
-            TextField("Website", text: $browser.address)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit { browser.loadAddress() }
+            Text(browser.address.isEmpty ? "Website" : browser.address)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
                 .frame(minWidth: 300, idealWidth: 520)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 5))
         }
         .buttonStyle(.borderless)
         .controlSize(.small)

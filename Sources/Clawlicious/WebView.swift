@@ -39,11 +39,6 @@ final class BrowserModel: ObservableObject {
     func stopLoading() {
         webView?.stopLoading()
     }
-
-    func loadAddress() {
-        guard let url = browserURL(from: address) else { return }
-        webView?.load(URLRequest(url: url))
-    }
 }
 
 struct BookmarkWebView: NSViewRepresentable {
@@ -105,12 +100,4 @@ struct BookmarkWebView: NSViewRepresentable {
             browser.sync(from: webView)
         }
     }
-}
-
-func browserURL(from raw: String) -> URL? {
-    let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !value.isEmpty else { return nil }
-    let candidate = value.contains("://") ? value : "https://\(value)"
-    guard let url = URL(string: candidate), url.host != nil else { return nil }
-    return url
 }
