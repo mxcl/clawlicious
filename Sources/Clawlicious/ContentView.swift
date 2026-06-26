@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var library = BookmarkLibrary()
+    @StateObject private var browser = BrowserModel()
     @State private var bookmarkPendingDeletion: Bookmark?
     @FocusState private var isAddingBookmark: Bool
 
@@ -13,7 +14,14 @@ struct ContentView: View {
             BookmarkListView(library: library, isAddingBookmark: $isAddingBookmark)
                 .navigationSplitViewColumnWidth(min: 360, ideal: 430, max: 540)
         } detail: {
-            DetailWebView(library: library, bookmark: library.selectedBookmark)
+            DetailWebView(library: library, bookmark: library.selectedBookmark, browser: browser)
+        }
+        .toolbar {
+            if library.selectedBookmark != nil {
+                ToolbarItem(placement: .primaryAction) {
+                    BrowserControls(browser: browser)
+                }
+            }
         }
         .background {
             LiquidGlassSurface(material: .ultraThinMaterial, tint: .black.opacity(0.14))
@@ -257,7 +265,7 @@ private struct TagPill: View {
 private struct DetailWebView: View {
     @ObservedObject var library: BookmarkLibrary
     var bookmark: Bookmark?
-    @StateObject private var browser = BrowserModel()
+    @ObservedObject var browser: BrowserModel
 
     var body: some View {
         Group {
@@ -282,17 +290,6 @@ private struct DetailWebView: View {
                 }
             } else {
                 ContentUnavailableView("No Bookmark", systemImage: "link", description: Text("Add a URL to start."))
-            }
-        }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if bookmark != nil {
-                HStack {
-                    BrowserControls(browser: browser)
-                    Spacer()
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(.bar)
             }
         }
         .background(.background)
