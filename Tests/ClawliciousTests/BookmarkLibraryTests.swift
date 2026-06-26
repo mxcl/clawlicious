@@ -57,6 +57,26 @@ final class BookmarkLibraryTests: XCTestCase {
     }
 
     @MainActor
+    func testDeletingSelectedBookmarkSavesAndSelectsNextBookmark() {
+        let first = testBookmark(title: "First", url: "https://example.com/first")
+        let second = testBookmark(title: "Second", url: "https://example.com/second")
+        let saved = SavedBookmarks()
+        let library = BookmarkLibrary(
+            store: BookmarkStore(
+                load: { [first, second] },
+                save: { saved.value = $0 }
+            ),
+            summarizer: FailingSummarizer()
+        )
+
+        library.deleteBookmark(first.id)
+
+        XCTAssertEqual(library.bookmarks.map(\.id), [second.id])
+        XCTAssertEqual(saved.value.map(\.id), [second.id])
+        XCTAssertEqual(library.selectedID, second.id)
+    }
+
+    @MainActor
     func testAddingExistingFailedBookmarkRetriesSummary() async throws {
         let bookmark = Bookmark(
             id: UUID(),
@@ -87,6 +107,27 @@ final class BookmarkLibraryTests: XCTestCase {
         XCTAssertEqual(library.bookmarks.first?.status, .summarized)
         XCTAssertEqual(library.bookmarks.first?.title, "Swift Notes")
     }
+}
+
+private func testBookmark(title: String, url: String) -> Bookmark {
+    let url = URL(string: url)!
+    return Bookmark(
+        id: UUID(),
+        url: url,
+        domain: url.bookmarkDomain,
+        title: title,
+        summary: "",
+        tags: [],
+        category: "Uncategorized",
+        createdAt: Date(),
+        updatedAt: Date(),
+        status: .summarized,
+        error: nil
+    )
+}
+
+private final class SavedBookmarks: @unchecked Sendable {
+    var value: [Bookmark] = []
 }
 
 private struct FailingSummarizer: BookmarkSummarizing {

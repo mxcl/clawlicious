@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var library = BookmarkLibrary()
+    @State private var bookmarkPendingDeletion: Bookmark?
 
     var body: some View {
         NavigationSplitView {
@@ -31,6 +32,36 @@ struct ContentView: View {
         }
         .background(WindowChrome())
         .frame(minWidth: 1120, minHeight: 680)
+        .onAppear(perform: publishBookmarkSelection)
+        .onChange(of: library.selectedID) { _, _ in publishBookmarkSelection() }
+        .onReceive(NotificationCenter.default.publisher(for: .clawliciousDeleteBookmark)) { _ in
+            bookmarkPendingDeletion = library.selectedBookmark
+        }
+        .alert("Delete Bookmark?", isPresented: deleteConfirmationPresented, presenting: bookmarkPendingDeletion) { bookmark in
+            Button("Delete", role: .destructive) {
+                library.deleteBookmark(bookmark.id)
+                bookmarkPendingDeletion = nil
+            }
+            Button("Cancel", role: .cancel) {
+                bookmarkPendingDeletion = nil
+            }
+        } message: { bookmark in
+            Text("Delete \"\(bookmark.title)\"?")
+        }
+    }
+
+    private var deleteConfirmationPresented: Binding<Bool> {
+        Binding {
+            bookmarkPendingDeletion != nil
+        } set: { isPresented in
+            if !isPresented {
+                bookmarkPendingDeletion = nil
+            }
+        }
+    }
+
+    private func publishBookmarkSelection() {
+        NotificationCenter.default.post(name: .clawliciousBookmarkSelectionChanged, object: library.selectedBookmark?.id)
     }
 }
 

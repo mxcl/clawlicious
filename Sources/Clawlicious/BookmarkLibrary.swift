@@ -92,6 +92,16 @@ final class BookmarkLibrary: ObservableObject {
         retrySummary(bookmark.id, url: bookmark.url)
     }
 
+    func deleteBookmark(_ id: Bookmark.ID) {
+        guard let index = bookmarks.firstIndex(where: { $0.id == id }) else { return }
+        let bookmark = bookmarks.remove(at: index)
+        if selectedID == id {
+            selectedID = visibleBookmarks.first?.id ?? bookmarks.first?.id
+        }
+        save()
+        statusLine = "Deleted \(bookmark.title)."
+    }
+
     private func retrySummary(_ id: Bookmark.ID, url: URL) {
         update(id) { bookmark in
             bookmark.status = .pending

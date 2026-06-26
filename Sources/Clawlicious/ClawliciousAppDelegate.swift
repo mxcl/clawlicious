@@ -2,6 +2,8 @@ import AppKit
 
 extension Notification.Name {
     static let clawliciousNewBookmark = Notification.Name("ClawliciousNewBookmark")
+    static let clawliciousDeleteBookmark = Notification.Name("ClawliciousDeleteBookmark")
+    static let clawliciousBookmarkSelectionChanged = Notification.Name("ClawliciousBookmarkSelectionChanged")
 }
 
 @MainActor
@@ -42,10 +44,13 @@ final class ClawliciousAppDelegate: NSObject, NSApplicationDelegate {
         app.addItem(withTitle: "Quit Clawlicious", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         addMenu(app, named: "Clawlicious", to: main)
 
-        let file = NSMenu()
-        let new = file.addItem(withTitle: "New Bookmark", action: #selector(MenuTarget.newBookmark(_:)), keyEquivalent: "n")
+        let bookmark = NSMenu()
+        let new = bookmark.addItem(withTitle: "New Bookmark", action: #selector(MenuTarget.newBookmark(_:)), keyEquivalent: "n")
         new.target = menuTarget
-        addMenu(file, named: "File", to: main)
+        let delete = bookmark.addItem(withTitle: "Delete Bookmark", action: #selector(MenuTarget.deleteBookmark(_:)), keyEquivalent: "\u{8}")
+        delete.target = menuTarget
+        delete.keyEquivalentModifierMask = []
+        addMenu(bookmark, named: "Bookmark", to: main)
 
         addMenu(editMenu(), named: "Edit", to: main)
 
@@ -160,8 +165,32 @@ private extension NSMenu {
     }
 }
 
-private final class MenuTarget: NSObject {
+private final class MenuTarget: NSObject, NSMenuItemValidation {
+    private var hasSelectedBookmark = false
+
+    override init() {
+        super.init()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(bookmarkSelectionChanged(_:)),
+            name: .clawliciousBookmarkSelectionChanged,
+            object: nil
+        )
+    }
+
     @objc func newBookmark(_ sender: Any?) {
         NotificationCenter.default.post(name: .clawliciousNewBookmark, object: nil)
+    }
+
+    @objc func deleteBookmark(_ sender: Any?) {
+        NotificationCenter.default.post(name: .clawliciousDeleteBookmark, object: nil)
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        menuItem.action == #selector(deleteBookmark(_:)) ? hasSelectedBookmark : true
+    }
+
+    @objc private func bookmarkSelectionChanged(_ notification: Notification) {
+        hasSelectedBookmark = notification.object != nil
     }
 }
