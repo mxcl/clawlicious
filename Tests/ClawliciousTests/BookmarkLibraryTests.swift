@@ -106,6 +106,7 @@ final class BookmarkLibraryTests: XCTestCase {
         }
         XCTAssertEqual(library.bookmarks.first?.status, .summarized)
         XCTAssertEqual(library.bookmarks.first?.title, "Swift Notes")
+        XCTAssertEqual(library.bookmarks.first?.tags, ["macos", "swift"])
     }
 }
 

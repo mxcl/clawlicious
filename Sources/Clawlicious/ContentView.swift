@@ -110,6 +110,7 @@ private struct BookmarkListView: View {
                 BookmarkRow(bookmark: bookmark) {
                     library.retryBookmark(bookmark)
                 }
+                    .id(bookmark.updatedAt)
                     .tag(bookmark.id)
             }
             .listStyle(.inset)
@@ -178,10 +179,10 @@ private struct BookmarkRow: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(3)
             HStack(spacing: 6) {
-                TagPill(bookmark.category, systemImage: "folder")
                 ForEach(bookmark.tags.prefix(4), id: \.self) { tag in
                     TagPill(tag, systemImage: "tag")
                 }
+                TagPill(bookmark.category, systemImage: "folder")
             }
         }
         .padding(.vertical, 6)
