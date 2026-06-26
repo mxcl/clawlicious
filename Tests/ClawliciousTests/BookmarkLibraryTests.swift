@@ -152,6 +152,29 @@ final class BookmarkLibraryTests: XCTestCase {
         XCTAssertEqual(library.bookmarks.first?.contentWarning, "Could only read the public excerpt.")
         XCTAssertEqual(saved.value.first?.contentWarning, "Could only read the public excerpt.")
     }
+
+    @MainActor
+    func testCategoriesAreTitleCased() async throws {
+        var bookmark = testBookmark(title: "Old", url: "https://example.com/old")
+        bookmark.category = "developer tools"
+        let savedBookmark = bookmark
+        let library = BookmarkLibrary(
+            store: BookmarkStore(
+                load: { [savedBookmark] },
+                save: { _ in }
+            ),
+            summarizer: LowercaseCategorySummarizer()
+        )
+
+        XCTAssertEqual(library.categories, ["Developer Tools"])
+        library.retryBookmark(bookmark)
+        library.summarizeBookmark(bookmark.id, url: bookmark.url, page: .test)
+
+        for _ in 0..<20 where library.bookmarks.first?.status != .summarized {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        XCTAssertEqual(library.bookmarks.first?.category, "Design Systems")
+    }
 }
 
 private func testBookmark(title: String, url: String) -> Bookmark {
@@ -202,6 +225,12 @@ private struct WarningSummarizer: BookmarkSummarizing {
             category: "News",
             contentWarning: "Could only read the public excerpt."
         )
+    }
+}
+
+private struct LowercaseCategorySummarizer: BookmarkSummarizing {
+    func summarize(url: URL, page: PageSnapshot) async throws -> BookmarkMetadata {
+        BookmarkMetadata(title: "New", summary: "Summary", tags: [], category: "design systems")
     }
 }
 

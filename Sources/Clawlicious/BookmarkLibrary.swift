@@ -19,7 +19,11 @@ final class BookmarkLibrary: ObservableObject {
         self.store = store
         self.summarizer = summarizer
         do {
-            bookmarks = try store.load()
+            bookmarks = try store.load().map {
+                var bookmark = $0
+                bookmark.category = normalizeCategory(bookmark.category)
+                return bookmark
+            }
             selectedID = bookmarks.first?.id
         } catch {
             statusLine = error.localizedDescription
@@ -143,7 +147,7 @@ final class BookmarkLibrary: ObservableObject {
                 bookmark.title = metadata.title.isEmpty ? bookmark.title : metadata.title
                 bookmark.summary = metadata.summary
                 bookmark.tags = sortedUnique(metadata.tags.map(normalizeTag).filter { !$0.isEmpty })
-                bookmark.category = metadata.category.isEmpty ? "Uncategorized" : metadata.category
+                bookmark.category = normalizeCategory(metadata.category)
                 bookmark.status = .summarized
                 bookmark.error = nil
                 bookmark.contentWarning = metadata.contentWarning?.cleanedSingleLine.nilIfEmpty
@@ -214,6 +218,11 @@ private func normalizeTag(_ value: String) -> String {
     value.trimmingCharacters(in: .whitespacesAndNewlines)
         .replacing(/\s+/, with: "-")
         .lowercased()
+}
+
+private func normalizeCategory(_ value: String) -> String {
+    let category = value.cleanedSingleLine
+    return category.isEmpty ? "Uncategorized" : category.localizedCapitalized
 }
 
 func sortedUnique(_ values: [String]) -> [String] {
