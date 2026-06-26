@@ -78,6 +78,13 @@ final class BrowserModel: ObservableObject {
         return try await currentPageSnapshot()
     }
 
+    nonisolated static func requireReadableMarkdown(_ snapshot: PageSnapshot) throws -> PageSnapshot {
+        guard !snapshot.markdown.cleanedSingleLine.isEmpty else {
+            throw NSError(domain: "Clawlicious", code: 2, userInfo: [NSLocalizedDescriptionKey: "No readable page text was captured."])
+        }
+        return snapshot
+    }
+
     private func currentPageSnapshot() async throws -> PageSnapshot {
         guard let webView else {
             throw NSError(domain: "Clawlicious", code: 1, userInfo: [NSLocalizedDescriptionKey: "Browser is not ready."])
@@ -211,7 +218,7 @@ struct BookmarkWebView: NSViewRepresentable {
             Task {
                 do {
                     let snapshot = try await browser.pageSnapshot(minimumMarkdownLength: 80)
-                    onPageSnapshot(bookmarkURL, snapshot)
+                    onPageSnapshot(bookmarkURL, try BrowserModel.requireReadableMarkdown(snapshot))
                 } catch {
                     onPageSnapshotFailure(error)
                 }

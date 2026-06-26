@@ -103,6 +103,15 @@ final class BookmarkLibraryTests: XCTestCase {
         XCTAssertNil(BrowserBookmarkletServer.importURLString(from: request, expectedToken: "bad"))
     }
 
+    func testEmptyBrowserMarkdownIsRejectedBeforeSummarizing() {
+        XCTAssertThrowsError(
+            try BrowserModel.requireReadableMarkdown(PageSnapshot(title: "Loaded", description: "", markdown: " \n "))
+        )
+        XCTAssertNoThrow(
+            try BrowserModel.requireReadableMarkdown(PageSnapshot(title: "Loaded", description: "", markdown: "Readable page text."))
+        )
+    }
+
     @MainActor
     func testSnapshotFromDifferentURLDoesNotSummarizeSelectedBookmark() {
         let bookmark = testBookmark(title: "Pending", url: "https://example.com/current")
