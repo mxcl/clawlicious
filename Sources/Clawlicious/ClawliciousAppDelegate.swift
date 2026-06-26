@@ -10,11 +10,19 @@ final class ClawliciousAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
-        installMainMenu()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.activate(ignoringOtherApps: true)
+        DispatchQueue.main.async { [weak self] in
+            self?.installMainMenu()
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        if NSApp.mainMenu?.items.contains(where: { $0.title == "Edit" }) != true {
+            installMainMenu()
+        }
     }
 
     private func installMainMenu() {
