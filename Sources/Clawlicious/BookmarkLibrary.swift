@@ -56,7 +56,11 @@ final class BookmarkLibrary: ObservableObject {
     func addBookmark(_ url: URL) {
         if let existing = bookmarks.first(where: { $0.url == url }) {
             selectedID = existing.id
-            statusLine = "Bookmark already saved."
+            if existing.status == .failed {
+                retryBookmark(existing)
+            } else {
+                statusLine = "Bookmark already saved."
+            }
             return
         }
 
@@ -84,6 +88,24 @@ final class BookmarkLibrary: ObservableObject {
         }
     }
 
+    func retryBookmark(_ bookmark: Bookmark) {
+        retrySummary(bookmark.id, url: bookmark.url)
+    }
+
+    private func retrySummary(_ id: Bookmark.ID, url: URL) {
+        update(id) { bookmark in
+            bookmark.status = .pending
+            bookmark.summary = "Summarizing..."
+            bookmark.error = nil
+            bookmark.updatedAt = Date()
+        }
+        save()
+        statusLine = "Retrying Codex for \(url.bookmarkDomain)..."
+        Task {
+            await summarize(id, url: url)
+        }
+    }
+
     private func summarize(_ id: Bookmark.ID, url: URL) async {
         do {
             let metadata = try await summarizer.summarize(url: url)
@@ -100,7 +122,7 @@ final class BookmarkLibrary: ObservableObject {
         } catch {
             update(id) { bookmark in
                 bookmark.status = .failed
-                bookmark.summary = "Codex metadata failed."
+                bookmark.summary = "Codex metadata failed: \(error.localizedDescription.cleanedSingleLine)"
                 bookmark.error = error.localizedDescription
                 bookmark.updatedAt = Date()
             }

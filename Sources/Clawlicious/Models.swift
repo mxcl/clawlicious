@@ -47,3 +47,10 @@ extension URL {
             .replacing(/^www\./, with: "")
     }
 }
+
+extension String {
+    var cleanedSingleLine: String {
+        replacing(/\s+/, with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}

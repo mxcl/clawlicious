@@ -72,12 +72,13 @@ private struct CodexCLI {
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.currentDirectoryURL = temp
         process.arguments = [
-            "codex", "exec",
+            "codex",
+            "--ask-for-approval", "never",
+            "exec",
             "--ephemeral",
             "--skip-git-repo-check",
             "--ignore-rules",
             "--sandbox", "read-only",
-            "--ask-for-approval", "never",
             "--output-schema", schemaURL.path,
             "--output-last-message", outputURL.path,
             "-"

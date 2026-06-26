@@ -76,7 +76,9 @@ private struct BookmarkListView: View {
             addBar
             Divider()
             List(library.visibleBookmarks, selection: $library.selectedID) { bookmark in
-                BookmarkRow(bookmark: bookmark)
+                BookmarkRow(bookmark: bookmark) {
+                    library.retryBookmark(bookmark)
+                }
                     .tag(bookmark.id)
             }
             .listStyle(.inset)
@@ -118,6 +120,7 @@ private struct BookmarkListView: View {
 
 private struct BookmarkRow: View {
     var bookmark: Bookmark
+    var retry: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -126,6 +129,13 @@ private struct BookmarkRow: View {
                     .font(.headline)
                     .lineLimit(1)
                 Spacer()
+                if bookmark.status == .failed {
+                    Button(action: retry) {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Retry Codex metadata")
+                }
                 StatusDot(status: bookmark.status)
             }
             Text(bookmark.domain)
