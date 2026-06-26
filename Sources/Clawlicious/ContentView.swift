@@ -211,9 +211,9 @@ private struct BookmarkRow: View {
             Text(bookmark.summary)
                 .font(.callout)
                 .foregroundStyle(.secondary)
-                .lineLimit(3)
-            HStack(spacing: 6) {
-                ForEach(bookmark.tags.prefix(4), id: \.self) { tag in
+                .fixedSize(horizontal: false, vertical: true)
+            TagFlow(spacing: 6) {
+                ForEach(bookmark.tags, id: \.self) { tag in
                     TagPill(tag, systemImage: "tag")
                 }
                 TagPill(bookmark.category, systemImage: "folder")
@@ -244,6 +244,79 @@ private struct WarningBadge: View {
             }
             .accessibilityLabel("Bookmark content warning")
             .accessibilityValue(message)
+    }
+}
+
+private struct TagFlow: Layout {
+    var spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = rows(in: proposal.width, subviews: subviews)
+        let height = rows.reduce(CGFloat.zero) { $0 + $1.height } + spacing * CGFloat(max(0, rows.count - 1))
+        return CGSize(width: proposal.width ?? rows.map(\.width).max() ?? 0, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+
+        for row in rows(in: bounds.width, subviews: subviews) {
+            var x = bounds.minX
+
+            for item in row.items {
+                subviews[item.index].place(
+                    at: CGPoint(x: x, y: y),
+                    anchor: .topLeading,
+                    proposal: ProposedViewSize(width: item.size.width, height: item.size.height)
+                )
+                x += item.size.width + spacing
+            }
+
+            y += row.height + spacing
+        }
+    }
+
+    private func rows(in proposedWidth: CGFloat?, subviews: Subviews) -> [Row] {
+        let maxWidth = proposedWidth ?? .greatestFiniteMagnitude
+        var rows: [Row] = []
+        var row = Row()
+
+        for index in subviews.indices {
+            let measured = subviews[index].sizeThatFits(ProposedViewSize(width: maxWidth, height: nil))
+            let item = Item(index: index, size: CGSize(width: min(measured.width, maxWidth), height: measured.height))
+
+            if !row.items.isEmpty, row.width + spacing + item.size.width > maxWidth {
+                rows.append(row)
+                row = Row()
+            }
+
+            row.append(item, spacing: spacing)
+        }
+
+        if !row.items.isEmpty {
+            rows.append(row)
+        }
+
+        return rows
+    }
+
+    private struct Row {
+        var items: [Item] = []
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+
+        mutating func append(_ item: Item, spacing: CGFloat) {
+            if !items.isEmpty {
+                width += spacing
+            }
+            items.append(item)
+            width += item.size.width
+            height = max(height, item.size.height)
+        }
+    }
+
+    private struct Item {
+        var index: Int
+        var size: CGSize
     }
 }
 
@@ -278,7 +351,7 @@ private struct TagPill: View {
     var body: some View {
         Label(text, systemImage: systemImage)
             .font(.caption2)
-            .lineLimit(1)
+            .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
             .background(.quaternary, in: Capsule())
