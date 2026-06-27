@@ -97,6 +97,25 @@ final class BookmarkLibrary: ObservableObject {
         statusLine = "Loading \(url.bookmarkDomain) in browser..."
     }
 
+    func addCompleteBookmark(_ bookmark: Bookmark) {
+        if let existing = bookmarks.first(where: { $0.url == bookmark.url }) {
+            selectedID = existing.id
+            statusLine = "Bookmark already saved."
+            return
+        }
+
+        var bookmark = bookmark
+        bookmark.tags = normalizeTags(bookmark.tags)
+        bookmark.category = normalizeCategory(bookmark.category)
+        bookmark.status = .summarized
+        bookmark.error = nil
+        bookmark.contentWarning = bookmark.contentWarning?.cleanedSingleLine.nilIfEmpty
+        bookmarks.insert(bookmark, at: 0)
+        selectedID = bookmark.id
+        save()
+        statusLine = "Saved \(bookmark.title)."
+    }
+
     func retryBookmark(_ bookmark: Bookmark) {
         retrySummary(bookmark.id, url: bookmark.url)
     }

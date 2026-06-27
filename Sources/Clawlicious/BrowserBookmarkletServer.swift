@@ -12,7 +12,7 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
     private init() {}
 
     var bookmarklet: String {
-        let endpoint = "http://127.0.0.1:\(port)/add?token=\(token)&url="
+        let endpoint = "http://127.0.0.1:\(port)/import?token=\(token)&url="
         return "javascript:(()=>{open('\(endpoint)'+encodeURIComponent(location.href),'clawlicious','popup,width=420,height=220')})()"
     }
 
@@ -26,9 +26,9 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
         Endpoints:
         - GET /bookmarks?token=\(token)
         - GET /search?token=\(token)&q=ai%20tech&from=YYYY-MM-DD&to=YYYY-MM-DD
-        - GET /add?token=\(token)&url=https%3A%2F%2Fexample.com
+        - GET /add?token=\(token)&url=https%3A%2F%2Fexample.com&title=Title&summary=Summary&category=AI&tags=ai%2Ctech
 
-        Use /search for questions about saved links. Use /add to save a new link. Date filters use createdAt.
+        Use /search for questions about saved links. Use /add to save a new link only after you have already summarized and tagged it. /add rejects incomplete data: url, title, summary, category, and tags are required. Date filters use createdAt.
         """
     }
 
@@ -80,11 +80,22 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
                 return
             }
 
-            if route.path == "/add", let urlString = route.query["url"], !urlString.isEmpty {
+            if route.path == "/import", let urlString = route.query["url"], !urlString.isEmpty {
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(name: .clawliciousImportBookmark, object: urlString)
                 }
                 Self.respond("Sent to Clawlicious.", on: connection)
+            } else if route.path == "/add" {
+                guard let bookmark = Self.completeBookmark(route: route) else {
+                    Self.respond("Missing complete bookmark data.", status: "400 Bad Request", on: connection)
+                    return
+                }
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: .clawliciousImportCompleteBookmark, object: bookmark)
+                    self.queue.async {
+                        Self.respond("Saved to Clawlicious.", on: connection)
+                    }
+                }
             } else if ["/bookmarks", "/search"].contains(route.path) {
                 do {
                     let bookmarks = try Self.apiBookmarks(route: route, bookmarks: BookmarkStore.live.load())
@@ -101,7 +112,7 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
 
     static func importURLString(from request: String, expectedToken: String) -> String? {
         guard let route = route(from: request),
-              route.path == "/add",
+              route.path == "/import",
               route.query["token"] == expectedToken,
               let urlString = route.query["url"],
               !urlString.isEmpty else {
@@ -117,6 +128,15 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
             return nil
         }
         return apiBookmarks(route: route, bookmarks: bookmarks)
+    }
+
+    static func completeBookmark(from request: String, expectedToken: String) -> Bookmark? {
+        guard let route = route(from: request),
+              route.path == "/add",
+              route.query["token"] == expectedToken else {
+            return nil
+        }
+        return completeBookmark(route: route)
     }
 
     private static func route(from request: String) -> Route? {
@@ -156,6 +176,50 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
                 return matchesTerms && matchesFrom && matchesTo
             }
             .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    private static func completeBookmark(route: Route) -> Bookmark? {
+        guard let url = route.query["url"].flatMap(validURL),
+              let title = required(route.query["title"]),
+              let summary = required(route.query["summary"]),
+              let category = required(route.query["category"]) else {
+            return nil
+        }
+        let tags = (route.query["tags"] ?? "")
+            .split(separator: ",")
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !tags.isEmpty else { return nil }
+
+        let now = Date()
+        return Bookmark(
+            id: UUID(),
+            url: url,
+            domain: url.bookmarkDomain,
+            title: title,
+            summary: summary,
+            tags: tags,
+            category: category,
+            createdAt: now,
+            updatedAt: now,
+            status: .summarized,
+            error: nil,
+            contentWarning: route.query["contentWarning"]?.cleanedSingleLine.nilIfEmpty
+        )
+    }
+
+    private static func required(_ value: String?) -> String? {
+        value?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    }
+
+    private static func validURL(_ value: String) -> URL? {
+        guard let url = URL(string: value),
+              let scheme = url.scheme?.lowercased(),
+              ["http", "https"].contains(scheme),
+              url.host != nil else {
+            return nil
+        }
+        return url
     }
 
     private static func day(_ value: String) -> Date? {

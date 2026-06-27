@@ -93,14 +93,55 @@ final class BookmarkLibraryTests: XCTestCase {
         XCTAssertEqual(saved.value.first?.url.absoluteString, "https://example.com/swift")
     }
 
-    func testBrowserBookmarkletRequestRequiresTokenAndExtractsURL() {
-        let request = "GET /add?token=good&url=https%3A%2F%2Fexample.com%2Fswift%3Fa%3D1%26b%3D2 HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"
+    @MainActor
+    func testAddingCompleteBookmarkSavesSummarizedMetadata() {
+        let saved = SavedBookmarks()
+        var bookmark = testBookmark(title: "AI Hardware", url: "https://example.com/ai")
+        bookmark.summary = "Accelerator notes"
+        bookmark.tags = ["AI Tech"]
+        bookmark.category = "machine learning"
+        let library = BookmarkLibrary(
+            store: BookmarkStore(
+                load: { [] },
+                save: { saved.value = $0 }
+            ),
+            summarizer: FailingSummarizer()
+        )
+
+        library.addCompleteBookmark(bookmark)
+
+        XCTAssertEqual(library.bookmarks.first?.status, .summarized)
+        XCTAssertEqual(library.bookmarks.first?.summary, "Accelerator notes")
+        XCTAssertEqual(library.bookmarks.first?.tags, ["ai-tech"])
+        XCTAssertEqual(library.bookmarks.first?.category, "Machine Learning")
+        XCTAssertEqual(saved.value.first?.status, .summarized)
+    }
+
+    func testBrowserBookmarkletImportRequiresTokenAndExtractsURL() {
+        let request = "GET /import?token=good&url=https%3A%2F%2Fexample.com%2Fswift%3Fa%3D1%26b%3D2 HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"
 
         XCTAssertEqual(
             BrowserBookmarkletServer.importURLString(from: request, expectedToken: "good"),
             "https://example.com/swift?a=1&b=2"
         )
         XCTAssertNil(BrowserBookmarkletServer.importURLString(from: request, expectedToken: "bad"))
+    }
+
+    func testAgentAddRequiresCompletePresummarizedBookmark() {
+        let complete = "GET /add?token=good&url=https%3A%2F%2Fexample.com%2Fai&title=AI%20Hardware&summary=Accelerator%20notes&category=AI&tags=ai%2Cchips HTTP/1.1\r\n\r\n"
+        let missingTags = "GET /add?token=good&url=https%3A%2F%2Fexample.com%2Fai&title=AI%20Hardware&summary=Accelerator%20notes&category=AI HTTP/1.1\r\n\r\n"
+        let urlOnly = "GET /add?token=good&url=https%3A%2F%2Fexample.com%2Fai HTTP/1.1\r\n\r\n"
+
+        let bookmark = BrowserBookmarkletServer.completeBookmark(from: complete, expectedToken: "good")
+        XCTAssertEqual(bookmark?.url.absoluteString, "https://example.com/ai")
+        XCTAssertEqual(bookmark?.title, "AI Hardware")
+        XCTAssertEqual(bookmark?.summary, "Accelerator notes")
+        XCTAssertEqual(bookmark?.category, "AI")
+        XCTAssertEqual(bookmark?.tags, ["ai", "chips"])
+        XCTAssertEqual(bookmark?.status, .summarized)
+        XCTAssertNil(BrowserBookmarkletServer.completeBookmark(from: missingTags, expectedToken: "good"))
+        XCTAssertNil(BrowserBookmarkletServer.completeBookmark(from: urlOnly, expectedToken: "good"))
+        XCTAssertNil(BrowserBookmarkletServer.completeBookmark(from: complete, expectedToken: "bad"))
     }
 
     func testAgentSearchAPIRequiresTokenAndFiltersBookmarks() throws {
