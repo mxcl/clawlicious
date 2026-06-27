@@ -392,6 +392,13 @@ final class BookmarkLibraryTests: XCTestCase {
         XCTAssertThrowsError(
             try BrowserModel.requireReadableMarkdown(PageSnapshot(title: "Loaded", description: "", markdown: " \n "))
         )
+        XCTAssertThrowsError(
+            try BrowserModel.requireReadableMarkdown(PageSnapshot(
+                title: "X",
+                description: "",
+                markdown: "To view keyboard shortcuts, press question mark View keyboard shortcuts Post See new posts"
+            ))
+        )
         XCTAssertNoThrow(
             try BrowserModel.requireReadableMarkdown(PageSnapshot(title: "Loaded", description: "", markdown: "Readable page text."))
         )

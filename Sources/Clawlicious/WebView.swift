@@ -79,10 +79,19 @@ final class BrowserModel: ObservableObject {
     }
 
     nonisolated static func requireReadableMarkdown(_ snapshot: PageSnapshot) throws -> PageSnapshot {
-        guard !snapshot.markdown.cleanedSingleLine.isEmpty else {
+        let text = snapshot.markdown.cleanedSingleLine
+        guard !text.isEmpty else {
             throw NSError(domain: "Clawlicious", code: 2, userInfo: [NSLocalizedDescriptionKey: "No readable page text was captured."])
         }
+        guard !isBrowserPlaceholder(text) else {
+            throw NSError(domain: "Clawlicious", code: 2, userInfo: [NSLocalizedDescriptionKey: "Only browser chrome was captured."])
+        }
         return snapshot
+    }
+
+    private nonisolated static func isBrowserPlaceholder(_ text: String) -> Bool {
+        text.localizedCaseInsensitiveContains("to view keyboard shortcuts, press question mark")
+            && text.localizedCaseInsensitiveContains("view keyboard shortcuts")
     }
 
     private func currentPageSnapshot() async throws -> PageSnapshot {
