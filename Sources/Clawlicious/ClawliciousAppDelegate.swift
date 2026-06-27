@@ -313,10 +313,14 @@ private enum CurrentBrowserURLReader {
             return #"tell application "Safari" to return URL of current tab of front window"#
         case "com.google.Chrome", "Google Chrome":
             return #"tell application "Google Chrome" to return URL of active tab of front window"#
+        case "com.openai.atlas", "ChatGPT Atlas":
+            return #"tell application "ChatGPT Atlas" to return URL of active tab of front window"#
         case "com.brave.Browser", "Brave Browser":
             return #"tell application "Brave Browser" to return URL of active tab of front window"#
         case "com.microsoft.edgemac", "Microsoft Edge":
             return #"tell application "Microsoft Edge" to return URL of active tab of front window"#
+        case "org.mozilla.firefox", "Firefox":
+            return #"tell application "System Events" to tell application process "Firefox" to return value of combo box 1 of group 1 of toolbar "Navigation" of group 1 of front window"#
         case "company.thebrowser.Browser", "Arc":
             return #"tell application "Arc" to return URL of active tab of front window"#
         default:
