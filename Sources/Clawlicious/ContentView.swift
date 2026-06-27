@@ -391,6 +391,7 @@ private struct DetailWebView: View {
                         url: bookmark.url,
                         browser: browser,
                         onPageSnapshot: { requestedURL, page in
+                            library.refreshBookmarkMarkdown(bookmark.id, url: requestedURL, page: page)
                             library.summarizeBookmark(bookmark.id, url: requestedURL, page: page)
                         },
                         onPageSnapshotFailure: { error in

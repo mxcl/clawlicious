@@ -154,6 +154,14 @@ final class BookmarkLibrary: ObservableObject {
         }
     }
 
+    func refreshBookmarkMarkdown(_ id: Bookmark.ID, url: URL, page: PageSnapshot) {
+        guard let bookmark = bookmarks.first(where: { $0.id == id }),
+              bookmark.url == url else {
+            return
+        }
+        statusLine = refreshMarkdown(bookmark, markdown: page.markdown) ?? statusLine
+    }
+
     func resummarizeBookmark(_ bookmark: Bookmark, page: PageSnapshot) {
         update(bookmark.id) { bookmark in
             bookmark.status = .pending
@@ -250,6 +258,15 @@ final class BookmarkLibrary: ObservableObject {
     private func saveMarkdown(_ bookmark: Bookmark, markdown: String) -> String? {
         do {
             try markdownStore.save(bookmark, markdown)
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    private func refreshMarkdown(_ bookmark: Bookmark, markdown: String) -> String? {
+        do {
+            try markdownStore.refresh(bookmark, markdown)
             return nil
         } catch {
             return error.localizedDescription

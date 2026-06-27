@@ -206,6 +206,63 @@ final class BookmarkLibraryTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
     }
 
+    @MainActor
+    func testRefreshingBookmarkMarkdownCreatesMissingFile() throws {
+        let directory = try temporaryDirectory()
+        let bookmark = testBookmark(title: "Swift Notes", url: "https://example.com/swift")
+        let library = BookmarkLibrary(
+            store: BookmarkStore(
+                load: { [bookmark] },
+                save: { _ in }
+            ),
+            summarizer: FailingSummarizer(),
+            markdownStore: .at { directory }
+        )
+
+        library.refreshBookmarkMarkdown(bookmark.id, url: bookmark.url, page: .test)
+
+        let document = try String(contentsOf: directory.appending(path: "\(bookmark.id.uuidString).md"), encoding: .utf8)
+        XCTAssertTrue(document.contains("markdownId: \"\(bookmark.id.uuidString)\""))
+        XCTAssertTrue(document.contains("previousMarkdownId: null"))
+        XCTAssertTrue(document.contains("# Browser markdown"))
+    }
+
+    @MainActor
+    func testRefreshingChangedMarkdownArchivesPreviousSnapshot() throws {
+        let directory = try temporaryDirectory()
+        let bookmark = testBookmark(title: "Swift Notes", url: "https://example.com/swift")
+        let markdownStore = BookmarkMarkdownStore.at { directory }
+        try markdownStore.save(bookmark, "line one\nline two")
+        let library = BookmarkLibrary(
+            store: BookmarkStore(
+                load: { [bookmark] },
+                save: { _ in }
+            ),
+            summarizer: FailingSummarizer(),
+            markdownStore: markdownStore
+        )
+
+        library.refreshBookmarkMarkdown(
+            bookmark.id,
+            url: bookmark.url,
+            page: PageSnapshot(title: "Swift Notes", description: "", markdown: "line one\nline three\nline four")
+        )
+
+        let current = try String(contentsOf: directory.appending(path: "\(bookmark.id.uuidString).md"), encoding: .utf8)
+        let archived = directory.appending(path: "versions/\(bookmark.id.uuidString).md")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: archived.path))
+        XCTAssertTrue(current.contains("previousMarkdownId: \"\(bookmark.id.uuidString)\""))
+        XCTAssertTrue(current.contains("previousMarkdownPath: \"versions\\/\(bookmark.id.uuidString).md\""))
+        XCTAssertTrue(current.contains("markdownChangedLines: 3"))
+        XCTAssertTrue(current.contains("markdownAddedLines: 2"))
+        XCTAssertTrue(current.contains("markdownRemovedLines: 1"))
+        XCTAssertTrue(current.contains("markdownChangePercent: 150"))
+
+        library.deleteBookmark(bookmark.id)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: archived.path))
+    }
+
     func testBrowserBookmarkletImportRequiresTokenAndExtractsURL() {
         let request = "GET /import?token=good&url=https%3A%2F%2Fexample.com%2Fswift%3Fa%3D1%26b%3D2 HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"
 
