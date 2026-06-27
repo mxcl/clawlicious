@@ -57,6 +57,34 @@ final class BookmarkLibraryTests: XCTestCase {
     }
 
     @MainActor
+    func testSidebarCountsRespectFiltersAndSearch() {
+        var swift = testBookmark(title: "Swift Notes", url: "https://example.com/swift")
+        swift.tags = ["swift", "macos"]
+        swift.category = "Development"
+        var ai = testBookmark(title: "AI Hardware", url: "https://example.com/ai")
+        ai.tags = ["ai", "hardware"]
+        ai.category = "Research"
+        let savedBookmarks = [swift, ai]
+        let library = BookmarkLibrary(
+            store: BookmarkStore(
+                load: { savedBookmarks },
+                save: { _ in }
+            ),
+            summarizer: FailingSummarizer()
+        )
+
+        XCTAssertEqual(library.count(for: .all), 2)
+        XCTAssertEqual(library.count(for: .category("Development")), 1)
+        XCTAssertEqual(library.count(for: .tag("ai")), 1)
+
+        library.searchText = "swift"
+
+        XCTAssertEqual(library.count(for: .all), 1)
+        XCTAssertEqual(library.count(for: .category("Development")), 1)
+        XCTAssertEqual(library.count(for: .category("Research")), 0)
+    }
+
+    @MainActor
     func testDeletingSelectedBookmarkSavesAndSelectsNextBookmark() {
         let first = testBookmark(title: "First", url: "https://example.com/first")
         let second = testBookmark(title: "Second", url: "https://example.com/second")

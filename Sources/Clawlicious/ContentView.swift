@@ -137,7 +137,14 @@ private struct SidebarView: View {
     }
 
     private func filterRow(_ filter: BookmarkFilter, icon: String) -> some View {
-        Label(filter.title, systemImage: icon)
+        HStack {
+            Label(filter.title, systemImage: icon)
+            Spacer()
+            Text("\(library.count(for: filter))")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+        }
             .tag(filter)
     }
 }

@@ -48,7 +48,11 @@ final class BookmarkLibrary: ObservableObject {
     }
 
     var visibleBookmarks: [Bookmark] {
-        bookmarks.filter(matchesFilter).filter(matchesSearch)
+        bookmarks.filter { matchesFilter($0, filter: filter) }.filter(matchesSearch)
+    }
+
+    func count(for filter: BookmarkFilter) -> Int {
+        bookmarks.lazy.filter { self.matchesFilter($0, filter: filter) }.filter(self.matchesSearch).count
     }
 
     func addBookmarkFromField() {
@@ -304,7 +308,7 @@ final class BookmarkLibrary: ObservableObject {
         }
     }
 
-    private func matchesFilter(_ bookmark: Bookmark) -> Bool {
+    private func matchesFilter(_ bookmark: Bookmark, filter: BookmarkFilter) -> Bool {
         switch filter {
         case .all:
             true
