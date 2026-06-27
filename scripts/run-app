@@ -5,6 +5,10 @@ swift build
 bin_dir="$(swift build --show-bin-path)"
 app="$bin_dir/Clawlicious.app"
 
+osascript -e 'tell application id "dev.mxcl.clawlicious" to quit' >/dev/null 2>&1 || true
+pkill -x Clawlicious >/dev/null 2>&1 || true
+sleep 0.2
+
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS"
 cp "$bin_dir/Clawlicious" "$app/Contents/MacOS/Clawlicious"
