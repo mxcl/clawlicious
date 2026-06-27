@@ -64,7 +64,16 @@ public enum PageExtraction {
           if (!text || !href) return text;
           return `[${text}](${new URL(href, location.href).href})`;
         }
-        if (tag === "IMG") return "";
+        if (tag === "IMG") {
+          const src = node.currentSrc || node.getAttribute("src") || node.getAttribute("data-src");
+          if (!src || src.startsWith("data:") || src.startsWith("blob:")) return "";
+          const alt = esc(node.getAttribute("alt") || node.getAttribute("aria-label") || node.getAttribute("title") || "Image");
+          try {
+            return `![${alt}](${new URL(src, location.href).href})`;
+          } catch {
+            return "";
+          }
+        }
         if (tag === "PRE") return `\`\`\`\n${node.innerText.trim()}\n\`\`\``;
         if (tag === "CODE") return `\`${clean(node.innerText)}\``;
         if (tag === "LI") return `- ${childText(node)}`;

@@ -1,4 +1,5 @@
 import XCTest
+import WebKit
 @testable import Clawlicious
 @testable import ClawliciousCore
 
@@ -403,6 +404,27 @@ final class BookmarkLibraryTests: XCTestCase {
         XCTAssertNoThrow(
             try BrowserModel.requireReadableMarkdown(PageSnapshot(title: "Loaded", description: "", markdown: "Readable page text."))
         )
+    }
+
+    @MainActor
+    func testMarkdownSnapshotIncludesImageLinks() async throws {
+        let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 800, height: 600))
+        let html = """
+        <main><article>
+        <h1>Rock post</h1>
+        <p>This caption is intentionally long enough for the article extractor to keep it as readable page text.</p>
+        <img alt="Album cover (front)" src="https://example.com/cover.png">
+        </article></main>
+        """
+        let htmlJSON = String(data: try JSONEncoder().encode(html), encoding: .utf8)!
+        try await webView.evaluateJavaScript("document.body.innerHTML = \(htmlJSON)")
+
+        let rawResult = try await webView.evaluateJavaScript(PageExtraction.markdownSnapshotScript)
+        let result = try XCTUnwrap(rawResult as? [String: Any])
+        let markdown = try XCTUnwrap(result["markdown"] as? String)
+
+        XCTAssertTrue(markdown.contains("![Album cover \\(front\\)]("), markdown)
+        XCTAssertTrue(markdown.contains("cover.png"), markdown)
     }
 
     @MainActor
