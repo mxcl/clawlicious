@@ -47,12 +47,26 @@ final class BookmarkLibrary: ObservableObject {
         sortedUnique(bookmarks.flatMap(\.tags))
     }
 
+    var visibleCategories: [String] {
+        categories.filter { count(for: .category($0)) > 0 }
+    }
+
+    var visibleTags: [String] {
+        tags.filter { count(for: .tag($0)) > 0 }
+    }
+
     var visibleBookmarks: [Bookmark] {
         bookmarks.filter { matchesFilter($0, filter: filter) }.filter(matchesSearch)
     }
 
     func count(for filter: BookmarkFilter) -> Int {
         bookmarks.lazy.filter { self.matchesFilter($0, filter: filter) }.filter(self.matchesSearch).count
+    }
+
+    func resetFilterIfEmpty() {
+        if count(for: filter) == 0 {
+            filter = .all
+        }
     }
 
     func addBookmarkFromField() {

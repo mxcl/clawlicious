@@ -115,17 +115,17 @@ private struct SidebarView: View {
         List(selection: $library.filter) {
             filterRow(.all, icon: "tray.full")
 
-            if !library.categories.isEmpty {
+            if !library.visibleCategories.isEmpty {
                 Section("Categories") {
-                    ForEach(library.categories, id: \.self) { category in
+                    ForEach(library.visibleCategories, id: \.self) { category in
                         filterRow(.category(category), icon: "folder")
                     }
                 }
             }
 
-            if !library.tags.isEmpty {
+            if !library.visibleTags.isEmpty {
                 Section("Tags") {
-                    ForEach(library.tags, id: \.self) { tag in
+                    ForEach(library.visibleTags, id: \.self) { tag in
                         filterRow(.tag(tag), icon: "tag")
                     }
                 }
@@ -134,6 +134,9 @@ private struct SidebarView: View {
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
         .searchable(text: $library.searchText, placement: .sidebar, prompt: "Search bookmarks")
+        .onChange(of: library.searchText) { _, _ in
+            library.resetFilterIfEmpty()
+        }
     }
 
     private func filterRow(_ filter: BookmarkFilter, icon: String) -> some View {

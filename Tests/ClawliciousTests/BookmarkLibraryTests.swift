@@ -76,12 +76,44 @@ final class BookmarkLibraryTests: XCTestCase {
         XCTAssertEqual(library.count(for: .all), 2)
         XCTAssertEqual(library.count(for: .category("Development")), 1)
         XCTAssertEqual(library.count(for: .tag("ai")), 1)
+        XCTAssertEqual(library.visibleCategories, ["Development", "Research"])
+        XCTAssertEqual(library.visibleTags, ["ai", "hardware", "macos", "swift"])
 
         library.searchText = "swift"
 
         XCTAssertEqual(library.count(for: .all), 1)
         XCTAssertEqual(library.count(for: .category("Development")), 1)
         XCTAssertEqual(library.count(for: .category("Research")), 0)
+        XCTAssertEqual(library.visibleCategories, ["Development"])
+        XCTAssertEqual(library.visibleTags, ["macos", "swift"])
+
+        library.searchText = ""
+
+        XCTAssertEqual(library.visibleCategories, ["Development", "Research"])
+        XCTAssertEqual(library.visibleTags, ["ai", "hardware", "macos", "swift"])
+    }
+
+    @MainActor
+    func testEmptySearchFilterResetsToAll() {
+        var swift = testBookmark(title: "Swift Notes", url: "https://example.com/swift")
+        swift.category = "Development"
+        var ai = testBookmark(title: "AI Hardware", url: "https://example.com/ai")
+        ai.category = "Research"
+        let savedBookmarks = [swift, ai]
+        let library = BookmarkLibrary(
+            store: BookmarkStore(
+                load: { savedBookmarks },
+                save: { _ in }
+            ),
+            summarizer: FailingSummarizer()
+        )
+
+        library.filter = .category("Research")
+        library.searchText = "swift"
+        library.resetFilterIfEmpty()
+
+        XCTAssertEqual(library.filter, .all)
+        XCTAssertEqual(library.visibleBookmarks.map(\.id), [swift.id])
     }
 
     @MainActor
