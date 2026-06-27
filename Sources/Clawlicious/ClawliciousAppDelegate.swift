@@ -262,14 +262,16 @@ private final class MenuTarget: NSObject, NSMenuItemValidation {
     }
 
     @objc func bookmarkCurrentBrowserPage(_ sender: Any?) {
-        do {
-            guard let urlString = try CurrentBrowserURLReader.urlString() else {
-                NotificationCenter.default.post(name: .clawliciousBrowserImportStatus, object: "No supported browser URL found.")
-                return
+        Task { @MainActor in
+            do {
+                guard let urlString = try await CurrentBrowserURLReader.urlString() else {
+                    NotificationCenter.default.post(name: .clawliciousBrowserImportStatus, object: "No supported browser URL found.")
+                    return
+                }
+                NotificationCenter.default.post(name: .clawliciousImportBookmark, object: urlString)
+            } catch {
+                NotificationCenter.default.post(name: .clawliciousBrowserImportStatus, object: "Browser URL shortcut failed: \(error.localizedDescription)")
             }
-            NotificationCenter.default.post(name: .clawliciousImportBookmark, object: urlString)
-        } catch {
-            NotificationCenter.default.post(name: .clawliciousBrowserImportStatus, object: "Browser URL shortcut failed: \(error.localizedDescription)")
         }
     }
 
@@ -296,37 +298,83 @@ private final class MenuTarget: NSObject, NSMenuItemValidation {
 }
 
 private enum CurrentBrowserURLReader {
-    static func urlString() throws -> String? {
-        guard let script = browserScript(for: NSWorkspace.shared.frontmostApplication) else { return nil }
-        var error: NSDictionary?
-        let result = NSAppleScript(source: script)?.executeAndReturnError(&error)
-        if let error {
-            throw AppleScriptError(error)
-        }
-        let urlString = result?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return urlString.isEmpty ? nil : urlString
+    static func urlString() async throws -> String? {
+        guard let browser = browser(for: NSWorkspace.shared.frontmostApplication) else { return nil }
+        return try await Task.detached {
+            try requestAutomationPermission(for: browser.automationBundleIdentifier)
+
+            var error: NSDictionary?
+            let result = NSAppleScript(source: browser.script)?.executeAndReturnError(&error)
+            if let error {
+                throw AppleScriptError(error)
+            }
+            let urlString = result?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return urlString.isEmpty ? nil : urlString
+        }.value
     }
 
-    private static func browserScript(for app: NSRunningApplication?) -> String? {
+    private static func browser(for app: NSRunningApplication?) -> BrowserAutomation? {
         switch app?.bundleIdentifier ?? app?.localizedName {
         case "com.apple.Safari", "Safari":
-            return #"tell application "Safari" to return URL of current tab of front window"#
+            return BrowserAutomation(
+                automationBundleIdentifier: "com.apple.Safari",
+                script: #"tell application "Safari" to return URL of current tab of front window"#
+            )
         case "com.google.Chrome", "Google Chrome":
-            return #"tell application "Google Chrome" to return URL of active tab of front window"#
+            return BrowserAutomation(
+                automationBundleIdentifier: "com.google.Chrome",
+                script: #"tell application "Google Chrome" to return URL of active tab of front window"#
+            )
         case "com.openai.atlas", "ChatGPT Atlas":
-            return #"tell application "ChatGPT Atlas" to return URL of active tab of front window"#
+            return BrowserAutomation(
+                automationBundleIdentifier: "com.openai.atlas",
+                script: #"tell application "ChatGPT Atlas" to return URL of active tab of front window"#
+            )
         case "com.brave.Browser", "Brave Browser":
-            return #"tell application "Brave Browser" to return URL of active tab of front window"#
+            return BrowserAutomation(
+                automationBundleIdentifier: "com.brave.Browser",
+                script: #"tell application "Brave Browser" to return URL of active tab of front window"#
+            )
         case "com.microsoft.edgemac", "Microsoft Edge":
-            return #"tell application "Microsoft Edge" to return URL of active tab of front window"#
+            return BrowserAutomation(
+                automationBundleIdentifier: "com.microsoft.edgemac",
+                script: #"tell application "Microsoft Edge" to return URL of active tab of front window"#
+            )
         case "org.mozilla.firefox", "Firefox":
-            return #"tell application "System Events" to tell application process "Firefox" to return value of combo box 1 of group 1 of toolbar "Navigation" of group 1 of front window"#
+            return BrowserAutomation(
+                automationBundleIdentifier: "com.apple.systemevents",
+                script: #"tell application "System Events" to tell application process "Firefox" to return value of combo box 1 of group 1 of toolbar "Navigation" of group 1 of front window"#
+            )
         case "company.thebrowser.Browser", "Arc":
-            return #"tell application "Arc" to return URL of active tab of front window"#
+            return BrowserAutomation(
+                automationBundleIdentifier: "company.thebrowser.Browser",
+                script: #"tell application "Arc" to return URL of active tab of front window"#
+            )
         default:
             return nil
         }
     }
+
+    private static func requestAutomationPermission(for bundleIdentifier: String) throws {
+        var target = AEAddressDesc()
+        let createStatus = bundleIdentifier.withCString {
+            AECreateDesc(typeApplicationBundleID, $0, bundleIdentifier.utf8.count, &target)
+        }
+        guard createStatus == noErr else {
+            throw AppleEventPermissionError(status: OSStatus(createStatus))
+        }
+        defer { AEDisposeDesc(&target) }
+
+        let permissionStatus = AEDeterminePermissionToAutomateTarget(&target, typeWildCard, typeWildCard, true)
+        guard permissionStatus == noErr else {
+            throw AppleEventPermissionError(status: permissionStatus)
+        }
+    }
+}
+
+private struct BrowserAutomation: Sendable {
+    let automationBundleIdentifier: String
+    let script: String
 }
 
 private struct AppleScriptError: LocalizedError {
@@ -337,4 +385,21 @@ private struct AppleScriptError: LocalizedError {
     }
 
     var errorDescription: String? { message }
+}
+
+private struct AppleEventPermissionError: LocalizedError {
+    let status: OSStatus
+
+    var errorDescription: String? {
+        switch status {
+        case OSStatus(errAEEventNotPermitted):
+            "Automation permission was denied."
+        case OSStatus(errAEEventWouldRequireUserConsent):
+            "Automation permission requires user consent."
+        case OSStatus(procNotFound):
+            "The browser is not running."
+        default:
+            "Automation permission failed: \(status)."
+        }
+    }
 }

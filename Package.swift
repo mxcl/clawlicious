@@ -11,7 +11,16 @@ let package = Package(
         .target(name: "ClawliciousCore"),
         .executableTarget(
             name: "Clawlicious",
-            dependencies: ["ClawliciousCore"]
+            dependencies: ["ClawliciousCore"],
+            exclude: ["Info.plist"],
+            linkerSettings: [
+                .unsafeFlags([
+                    "-Xlinker", "-sectcreate",
+                    "-Xlinker", "__TEXT",
+                    "-Xlinker", "__info_plist",
+                    "-Xlinker", "Sources/Clawlicious/Info.plist"
+                ])
+            ]
         ),
         .testTarget(
             name: "ClawliciousTests",
