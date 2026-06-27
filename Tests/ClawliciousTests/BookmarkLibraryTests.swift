@@ -147,6 +147,65 @@ final class BookmarkLibraryTests: XCTestCase {
         XCTAssertEqual(saved.value.first?.status, .summarized)
     }
 
+    @MainActor
+    func testSummarizingBookmarkWritesAgentMarkdownFile() async throws {
+        let directory = try temporaryDirectory()
+        let library = BookmarkLibrary(
+            store: BookmarkStore(
+                load: { [] },
+                save: { _ in }
+            ),
+            summarizer: SuccessfulSummarizer(),
+            markdownStore: .at { directory }
+        )
+
+        library.addBookmark(URL(string: "https://example.com/swift")!)
+        let id = try XCTUnwrap(library.bookmarks.first?.id)
+        library.summarizeBookmark(id, url: URL(string: "https://example.com/swift")!, page: .test)
+
+        for _ in 0..<20 where !FileManager.default.fileExists(atPath: directory.appending(path: "\(id.uuidString).md").path) {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        let document = try String(contentsOf: directory.appending(path: "\(id.uuidString).md"), encoding: .utf8)
+        XCTAssertTrue(document.contains("url: \"https:\\/\\/example.com\\/swift\""))
+        XCTAssertTrue(document.contains("title: \"Swift Notes\""))
+        XCTAssertTrue(document.contains("## Page Markdown\n\n# Browser markdown"))
+    }
+
+    @MainActor
+    func testMetadataUpdateAndDeleteMaintainAgentMarkdownFile() throws {
+        let directory = try temporaryDirectory()
+        var existing = testBookmark(title: "Old", url: "https://example.com/ai")
+        existing.summary = "Old summary"
+        let savedExisting = existing
+        let markdownStore = BookmarkMarkdownStore.at { directory }
+        try markdownStore.save(existing, "# Original page markdown")
+        var metadata = testBookmark(title: "New AI Hardware", url: "https://example.com/ai")
+        metadata.summary = "New accelerator notes"
+        metadata.tags = ["AI Tech"]
+        metadata.category = "machine learning"
+        let library = BookmarkLibrary(
+            store: BookmarkStore(
+                load: { [savedExisting] },
+                save: { _ in }
+            ),
+            summarizer: FailingSummarizer(),
+            markdownStore: markdownStore
+        )
+        let url = directory.appending(path: "\(existing.id.uuidString).md")
+
+        library.updateBookmarkMetadata(metadata)
+
+        let document = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(document.contains("title: \"New AI Hardware\""))
+        XCTAssertTrue(document.contains("category: \"Machine Learning\""))
+        XCTAssertTrue(document.contains("# Original page markdown"))
+
+        library.deleteBookmark(existing.id)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+    }
+
     func testBrowserBookmarkletImportRequiresTokenAndExtractsURL() {
         let request = "GET /import?token=good&url=https%3A%2F%2Fexample.com%2Fswift%3Fa%3D1%26b%3D2 HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"
 
@@ -422,6 +481,13 @@ private func testBookmark(title: String, url: String) -> Bookmark {
         status: .summarized,
         error: nil
     )
+}
+
+private func temporaryDirectory() throws -> URL {
+    let directory = FileManager.default.temporaryDirectory
+        .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    return directory
 }
 
 private final class SavedBookmarks: @unchecked Sendable {

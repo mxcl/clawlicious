@@ -22,6 +22,7 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
 
         Base URL: http://127.0.0.1:\(port)
         Token: \(token)
+        Markdown folder: \(agentMarkdownPath)
 
         Endpoints:
         - GET /bookmarks?token=\(token)
@@ -31,6 +32,10 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
 
         Use /search for questions about saved links. Use /add to save a new link only after you have already summarized and tagged it. Use /update to edit metadata for an existing saved link. /add and /update reject incomplete data: url, title, summary, category, and tags are required. Date filters use createdAt.
         """
+    }
+
+    private var agentMarkdownPath: String {
+        (try? BookmarkMarkdownStore.live.directory().path(percentEncoded: false)) ?? "~/Library/Application Support/Clawlicious/Agent/links"
     }
 
     func start() {

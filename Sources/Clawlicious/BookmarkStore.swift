@@ -23,14 +23,18 @@ struct BookmarkStore: Sendable {
     )
 }
 
-private func storageURL() throws -> URL {
+func clawliciousApplicationSupportURL() throws -> URL {
     let base = try FileManager.default.url(
         for: .applicationSupportDirectory,
         in: .userDomainMask,
         appropriateFor: nil,
         create: true
     )
-    return base.appending(path: "Clawlicious/bookmarks.json")
+    return base.appending(path: "Clawlicious", directoryHint: .isDirectory)
+}
+
+private func storageURL() throws -> URL {
+    try clawliciousApplicationSupportURL().appending(path: "bookmarks.json")
 }
 
 extension JSONDecoder {

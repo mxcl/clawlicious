@@ -11,13 +11,16 @@ final class BookmarkLibrary: ObservableObject {
 
     private let store: BookmarkStore
     private let summarizer: BookmarkSummarizing
+    private let markdownStore: BookmarkMarkdownStore
 
     init(
         store: BookmarkStore = .live,
-        summarizer: BookmarkSummarizing = CodexBookmarkSummarizer()
+        summarizer: BookmarkSummarizing = CodexBookmarkSummarizer(),
+        markdownStore: BookmarkMarkdownStore = .live
     ) {
         self.store = store
         self.summarizer = summarizer
+        self.markdownStore = markdownStore
         do {
             bookmarks = try store.load().map {
                 var bookmark = $0
@@ -132,7 +135,7 @@ final class BookmarkLibrary: ObservableObject {
         bookmarks[index].updatedAt = Date()
         selectedID = bookmarks[index].id
         save()
-        statusLine = "Updated \(bookmarks[index].title)."
+        statusLine = updateMarkdownMetadata(bookmarks[index]) ?? "Updated \(bookmarks[index].title)."
     }
 
     func retryBookmark(_ bookmark: Bookmark) {
@@ -198,7 +201,7 @@ final class BookmarkLibrary: ObservableObject {
             selectedID = visibleBookmarks.first?.id ?? bookmarks.first?.id
         }
         save()
-        statusLine = "Deleted \(bookmark.title)."
+        statusLine = deleteMarkdown(id) ?? "Deleted \(bookmark.title)."
     }
 
     private func retrySummary(_ id: Bookmark.ID, url: URL) {
@@ -226,7 +229,11 @@ final class BookmarkLibrary: ObservableObject {
                 bookmark.contentWarning = metadata.contentWarning?.cleanedSingleLine.nilIfEmpty
                 bookmark.updatedAt = Date()
             }
-            statusLine = "Saved metadata for \(url.bookmarkDomain)."
+            if let bookmark = bookmarks.first(where: { $0.id == id }) {
+                statusLine = saveMarkdown(bookmark, markdown: page.markdown) ?? "Saved metadata for \(url.bookmarkDomain)."
+            } else {
+                statusLine = "Saved metadata for \(url.bookmarkDomain)."
+            }
         } catch {
             update(id) { bookmark in
                 bookmark.status = .failed
@@ -238,6 +245,33 @@ final class BookmarkLibrary: ObservableObject {
             statusLine = error.localizedDescription
         }
         save()
+    }
+
+    private func saveMarkdown(_ bookmark: Bookmark, markdown: String) -> String? {
+        do {
+            try markdownStore.save(bookmark, markdown)
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    private func updateMarkdownMetadata(_ bookmark: Bookmark) -> String? {
+        do {
+            try markdownStore.updateMetadata(bookmark)
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    private func deleteMarkdown(_ id: Bookmark.ID) -> String? {
+        do {
+            try markdownStore.delete(id)
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
     }
 
     private func update(_ id: Bookmark.ID, mutate: (inout Bookmark) -> Void) {
