@@ -26,8 +26,9 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
         Endpoints:
         - GET /bookmarks?token=\(token)
         - GET /search?token=\(token)&q=ai%20tech&from=YYYY-MM-DD&to=YYYY-MM-DD
+        - GET /add?token=\(token)&url=https%3A%2F%2Fexample.com
 
-        Use /search for questions about saved links. Date filters use createdAt.
+        Use /search for questions about saved links. Use /add to save a new link. Date filters use createdAt.
         """
     }
 
