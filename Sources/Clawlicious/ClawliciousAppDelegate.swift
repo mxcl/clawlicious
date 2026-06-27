@@ -1,4 +1,8 @@
 import AppKit
+import Carbon.HIToolbox
+
+private let bookmarkBrowserHotKeySignature = OSType(0x434C4157) // CLAW
+private let bookmarkBrowserHotKeyID = UInt32(1)
 
 extension Notification.Name {
     static let clawliciousNewBookmark = Notification.Name("ClawliciousNewBookmark")
@@ -14,6 +18,8 @@ extension Notification.Name {
 @MainActor
 final class ClawliciousAppDelegate: NSObject, NSApplicationDelegate {
     private let menuTarget = MenuTarget()
+    private var bookmarkBrowserHotKeyRef: EventHotKeyRef?
+    private var bookmarkBrowserHotKeyHandler: EventHandlerRef?
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -22,6 +28,7 @@ final class ClawliciousAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         DispatchQueue.main.async { [weak self] in
             self?.installMainMenu()
+            self?.installBookmarkBrowserHotKey()
             NSApp.activate(ignoringOtherApps: true)
         }
         BrowserBookmarkletServer.shared.start()
@@ -33,6 +40,15 @@ final class ClawliciousAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidBecomeActive(_ notification: Notification) {
         if NSApp.mainMenu?.items.contains(where: { $0.title == "Edit" }) != true {
             installMainMenu()
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        if let bookmarkBrowserHotKeyRef {
+            UnregisterEventHotKey(bookmarkBrowserHotKeyRef)
+        }
+        if let bookmarkBrowserHotKeyHandler {
+            RemoveEventHandler(bookmarkBrowserHotKeyHandler)
         }
     }
 
@@ -53,6 +69,9 @@ final class ClawliciousAppDelegate: NSObject, NSApplicationDelegate {
         let bookmark = NSMenu()
         let new = bookmark.addItem(withTitle: "New Bookmark", action: #selector(MenuTarget.newBookmark(_:)), keyEquivalent: "n")
         new.target = menuTarget
+        let bookmarkBrowserPage = bookmark.addItem(withTitle: "Bookmark Current Browser Page", action: #selector(MenuTarget.bookmarkCurrentBrowserPage(_:)), keyEquivalent: "b")
+        bookmarkBrowserPage.target = menuTarget
+        bookmarkBrowserPage.keyEquivalentModifierMask = [.command, .control, .option]
         let copyBookmarklet = bookmark.addItem(withTitle: "Copy Browser Bookmarklet", action: #selector(MenuTarget.copyBrowserBookmarklet(_:)), keyEquivalent: "")
         copyBookmarklet.target = menuTarget
         bookmark.addItem(.separator())
@@ -165,6 +184,46 @@ final class ClawliciousAppDelegate: NSObject, NSApplicationDelegate {
     private func action(_ name: String) -> Selector {
         NSSelectorFromString(name)
     }
+
+    private func installBookmarkBrowserHotKey() {
+        guard bookmarkBrowserHotKeyRef == nil else { return }
+
+        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        let userData = Unmanaged.passUnretained(menuTarget).toOpaque()
+        let handlerStatus = InstallEventHandler(GetApplicationEventTarget(), { _, event, userData in
+            guard let event, let userData else { return noErr }
+
+            var hotKeyID = EventHotKeyID()
+            GetEventParameter(
+                event,
+                EventParamName(kEventParamDirectObject),
+                EventParamType(typeEventHotKeyID),
+                nil,
+                MemoryLayout<EventHotKeyID>.size,
+                nil,
+                &hotKeyID
+            )
+
+            guard hotKeyID.signature == bookmarkBrowserHotKeySignature, hotKeyID.id == bookmarkBrowserHotKeyID else {
+                return noErr
+            }
+
+            let target = Unmanaged<MenuTarget>.fromOpaque(userData).takeUnretainedValue()
+            Task { @MainActor in
+                target.bookmarkCurrentBrowserPage(nil)
+            }
+            return noErr
+        }, 1, &eventType, userData, &bookmarkBrowserHotKeyHandler)
+        guard handlerStatus == noErr else { return }
+
+        var hotKeyRef: EventHotKeyRef?
+        let hotKeyID = EventHotKeyID(signature: bookmarkBrowserHotKeySignature, id: bookmarkBrowserHotKeyID)
+        let modifiers = UInt32(cmdKey | controlKey | optionKey)
+        let hotKeyStatus = RegisterEventHotKey(UInt32(kVK_ANSI_B), modifiers, hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
+        if hotKeyStatus == noErr {
+            bookmarkBrowserHotKeyRef = hotKeyRef
+        }
+    }
 }
 
 private extension NSMenu {
@@ -202,6 +261,18 @@ private final class MenuTarget: NSObject, NSMenuItemValidation {
         )
     }
 
+    @objc func bookmarkCurrentBrowserPage(_ sender: Any?) {
+        do {
+            guard let urlString = try CurrentBrowserURLReader.urlString() else {
+                NotificationCenter.default.post(name: .clawliciousBrowserImportStatus, object: "No supported browser URL found.")
+                return
+            }
+            NotificationCenter.default.post(name: .clawliciousImportBookmark, object: urlString)
+        } catch {
+            NotificationCenter.default.post(name: .clawliciousBrowserImportStatus, object: "Browser URL shortcut failed: \(error.localizedDescription)")
+        }
+    }
+
     @objc func deleteBookmark(_ sender: Any?) {
         NotificationCenter.default.post(name: .clawliciousDeleteBookmark, object: nil)
     }
@@ -222,4 +293,44 @@ private final class MenuTarget: NSObject, NSMenuItemValidation {
     @objc private func bookmarkSelectionChanged(_ notification: Notification) {
         hasSelectedBookmark = notification.object != nil
     }
+}
+
+private enum CurrentBrowserURLReader {
+    static func urlString() throws -> String? {
+        guard let script = browserScript(for: NSWorkspace.shared.frontmostApplication) else { return nil }
+        var error: NSDictionary?
+        let result = NSAppleScript(source: script)?.executeAndReturnError(&error)
+        if let error {
+            throw AppleScriptError(error)
+        }
+        let urlString = result?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return urlString.isEmpty ? nil : urlString
+    }
+
+    private static func browserScript(for app: NSRunningApplication?) -> String? {
+        switch app?.bundleIdentifier ?? app?.localizedName {
+        case "com.apple.Safari", "Safari":
+            return #"tell application "Safari" to return URL of current tab of front window"#
+        case "com.google.Chrome", "Google Chrome":
+            return #"tell application "Google Chrome" to return URL of active tab of front window"#
+        case "com.brave.Browser", "Brave Browser":
+            return #"tell application "Brave Browser" to return URL of active tab of front window"#
+        case "com.microsoft.edgemac", "Microsoft Edge":
+            return #"tell application "Microsoft Edge" to return URL of active tab of front window"#
+        case "company.thebrowser.Browser", "Arc":
+            return #"tell application "Arc" to return URL of active tab of front window"#
+        default:
+            return nil
+        }
+    }
+}
+
+private struct AppleScriptError: LocalizedError {
+    let message: String
+
+    init(_ dictionary: NSDictionary) {
+        message = dictionary[NSAppleScript.errorMessage] as? String ?? "AppleScript failed."
+    }
+
+    var errorDescription: String? { message }
 }
