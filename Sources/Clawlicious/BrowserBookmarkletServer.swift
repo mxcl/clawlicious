@@ -18,11 +18,12 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
 
     var agentConnectionText: String {
         """
-        Clawlicious local saved-links API is available while the app is running.
+        ```md
+        Clawlicious is a local app for managing my saved bookmarks.
 
         Base URL: http://127.0.0.1:\(port)
         Token: \(token)
-        Markdown folder: \(agentMarkdownPath)
+        All archived bookmarks as markdown: \(agentMarkdownPath)
 
         Endpoints:
         - GET /bookmarks?token=\(token)
@@ -30,7 +31,12 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
         - GET /agent/add?token=\(token)&url=https%3A%2F%2Fexample.com&title=Title&summary=Summary&category=AI&tags=ai%2Ctech
         - GET /update?token=\(token)&url=https%3A%2F%2Fexample.com&title=Better%20Title&summary=Better%20Summary&category=AI&tags=ai%2Ctech
 
-        Use /search for questions about saved links. Use /agent/add to save a new link only after you have already summarized and tagged it. Use /update to edit metadata for an existing saved link. /agent/add and /update reject incomplete data: url, title, summary, category, and tags are required. Date filters use createdAt.
+        Use /search for questions about saved links. Use /agent/add to save a
+        new link only after you have already summarized and tagged it. Use
+        /update to edit metadata for an existing saved link. /agent/add and
+        /update reject incomplete data: url, title, summary, category, and
+        tags are required. Date filters use createdAt.
+        ```
         """
     }
 
