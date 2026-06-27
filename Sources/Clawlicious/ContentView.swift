@@ -35,7 +35,7 @@ struct ContentView: View {
             }
         }
         .background {
-            LiquidGlassSurface(material: .ultraThinMaterial, tint: .black.opacity(0.14))
+            LiquidGlassSurface(material: .regularMaterial, tint: .clear)
                 .ignoresSafeArea()
         }
         .background(WindowChrome())
@@ -172,10 +172,11 @@ private struct AddBookmarkField: View {
                 NSPasteboard.general.setString(BrowserBookmarkletServer.shared.agentConnectionText, forType: .string)
                 library.statusLine = "Agent app connection text copied."
             } label: {
-                Label("Connect Agent App", systemImage: "link")
+                Image(systemName: "link")
             }
             .buttonStyle(.borderless)
             .help("Copy agent app connection instructions")
+            .accessibilityLabel("Connect Agent App")
         }
         .controlSize(.small)
     }
@@ -201,10 +202,10 @@ private struct BookmarkListView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
-                .background(LiquidGlassSurface(material: .regularMaterial, tint: .clear))
+                .background(LiquidGlassSurface(material: .bar, tint: .clear))
                 .overlay(alignment: .top) { Divider() }
         }
-        .background(LiquidGlassSurface(material: .thinMaterial, tint: .white.opacity(0.025)))
+        .background(LiquidGlassSurface(material: .thinMaterial, tint: .clear))
     }
 }
 
@@ -355,6 +356,8 @@ private struct StatusDot: View {
             .fill(color)
             .frame(width: 8, height: 8)
             .help(status.rawValue)
+            .accessibilityLabel("Status")
+            .accessibilityValue(status.rawValue.capitalized)
     }
 
     private var color: Color {
@@ -377,7 +380,7 @@ private struct TagPill: View {
 
     var body: some View {
         Label(text, systemImage: systemImage)
-            .font(.caption2)
+            .font(.caption)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
