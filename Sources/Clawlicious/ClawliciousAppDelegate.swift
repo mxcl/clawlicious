@@ -208,9 +208,10 @@ final class ClawliciousAppDelegate: NSObject, NSApplicationDelegate {
                 return noErr
             }
 
+            let sourceApp = BrowserApp(NSWorkspace.shared.frontmostApplication)
             let target = Unmanaged<MenuTarget>.fromOpaque(userData).takeUnretainedValue()
             Task { @MainActor in
-                target.bookmarkCurrentBrowserPage(nil)
+                target.bookmarkCurrentBrowserPage(from: sourceApp)
             }
             return noErr
         }, 1, &eventType, userData, &bookmarkBrowserHotKeyHandler)
@@ -262,10 +263,15 @@ private final class MenuTarget: NSObject, NSMenuItemValidation {
     }
 
     @objc func bookmarkCurrentBrowserPage(_ sender: Any?) {
+        bookmarkCurrentBrowserPage(from: BrowserApp(NSWorkspace.shared.frontmostApplication))
+    }
+
+    func bookmarkCurrentBrowserPage(from app: BrowserApp?) {
         Task { @MainActor in
             do {
-                guard let urlString = try await CurrentBrowserURLReader.urlString() else {
-                    NotificationCenter.default.post(name: .clawliciousBrowserImportStatus, object: "No supported browser URL found.")
+                guard let urlString = try await CurrentBrowserURLReader.urlString(from: app) else {
+                    let appName = app?.displayName.map { " for \($0)" } ?? ""
+                    NotificationCenter.default.post(name: .clawliciousBrowserImportStatus, object: "No supported browser URL found\(appName).")
                     return
                 }
                 NotificationCenter.default.post(name: .clawliciousImportBookmark, object: urlString)
@@ -298,8 +304,8 @@ private final class MenuTarget: NSObject, NSMenuItemValidation {
 }
 
 private enum CurrentBrowserURLReader {
-    static func urlString() async throws -> String? {
-        guard let browser = browser(for: NSWorkspace.shared.frontmostApplication) else { return nil }
+    static func urlString(from app: BrowserApp?) async throws -> String? {
+        guard let browser = browser(for: app) else { return nil }
         return try await Task.detached {
             try requestAutomationPermission(for: browser.automationBundleIdentifier)
 
@@ -313,7 +319,7 @@ private enum CurrentBrowserURLReader {
         }.value
     }
 
-    private static func browser(for app: NSRunningApplication?) -> BrowserAutomation? {
+    private static func browser(for app: BrowserApp?) -> BrowserAutomation? {
         switch app?.bundleIdentifier ?? app?.localizedName {
         case "com.apple.Safari", "Safari":
             return BrowserAutomation(
@@ -369,6 +375,20 @@ private enum CurrentBrowserURLReader {
         guard permissionStatus == noErr else {
             throw AppleEventPermissionError(status: permissionStatus)
         }
+    }
+}
+
+struct BrowserApp: Sendable {
+    let bundleIdentifier: String?
+    let localizedName: String?
+
+    init(_ app: NSRunningApplication?) {
+        bundleIdentifier = app?.bundleIdentifier
+        localizedName = app?.localizedName
+    }
+
+    var displayName: String? {
+        localizedName ?? bundleIdentifier
     }
 }
 

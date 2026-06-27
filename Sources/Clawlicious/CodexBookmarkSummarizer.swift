@@ -232,7 +232,7 @@ actor CodexAppServerSession {
         Return only one JSON object with title, summary, tags, category, and contentWarning.
         tags must be 2-6 short lowercase strings.
         Prefer current categories and tags when they fit.
-        Use available skills/tools when they can read the bookmark more completely, especially browser/chrome skills for rendered or logged-in pages.
+        Do not use tools or external app control; summarize only the page markdown provided below.
         If you cannot read the full bookmark content, set contentWarning to a concise user-facing explanation. Otherwise set contentWarning to null.
         Do not wrap the JSON in Markdown.
         """
