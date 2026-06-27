@@ -168,17 +168,31 @@ private struct AddBookmarkField: View {
             .help("Add bookmark")
 
             Button {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(BrowserBookmarkletServer.shared.agentConnectionText, forType: .string)
-                library.statusLine = "Agent app connection text copied."
+                openCodexAgentPrompt()
             } label: {
-                Image(systemName: "link")
+                Image(systemName: "sparkles")
             }
             .buttonStyle(.borderless)
-            .help("Copy agent app connection instructions")
-            .accessibilityLabel("Connect Agent App")
+            .help("Open Codex with agent connection instructions")
+            .accessibilityLabel("Open Codex")
         }
         .controlSize(.small)
+    }
+
+    private func openCodexAgentPrompt() {
+        var components = URLComponents()
+        components.scheme = "codex"
+        components.host = "new"
+        components.queryItems = [
+            URLQueryItem(name: "prompt", value: BrowserBookmarkletServer.shared.agentConnectionText)
+        ]
+
+        guard let url = components.url, NSWorkspace.shared.open(url) else {
+            library.statusLine = "Could not open Codex."
+            return
+        }
+
+        library.statusLine = "Opened Codex with agent connection instructions."
     }
 }
 
