@@ -194,7 +194,6 @@ private struct BookmarkListView: View {
             }
             .listStyle(.inset)
             .scrollContentBackground(.hidden)
-            Divider()
             Text(library.statusLine.isEmpty ? "\(library.visibleBookmarks.count) bookmarks" : library.statusLine)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -202,6 +201,8 @@ private struct BookmarkListView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
+                .background(LiquidGlassSurface(material: .regularMaterial, tint: .clear))
+                .overlay(alignment: .top) { Divider() }
         }
         .background(LiquidGlassSurface(material: .thinMaterial, tint: .white.opacity(0.025)))
     }
