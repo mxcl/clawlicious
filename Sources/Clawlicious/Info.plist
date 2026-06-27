@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>com.mxcl.Clawlicious</string>
+    <string>dev.mxcl.clawlicious</string>
     <key>CFBundleName</key>
     <string>Clawlicious</string>
     <key>NSAppleEventsUsageDescription</key>
