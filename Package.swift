@@ -8,10 +8,14 @@ let package = Package(
         .executable(name: "Clawlicious", targets: ["Clawlicious"])
     ],
     targets: [
-        .executableTarget(name: "Clawlicious"),
+        .target(name: "ClawliciousCore"),
+        .executableTarget(
+            name: "Clawlicious",
+            dependencies: ["ClawliciousCore"]
+        ),
         .testTarget(
             name: "ClawliciousTests",
-            dependencies: ["Clawlicious"]
+            dependencies: ["Clawlicious", "ClawliciousCore"]
         )
     ]
 )

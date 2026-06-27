@@ -1,4 +1,5 @@
 import Foundation
+import ClawliciousCore
 
 @MainActor
 final class BookmarkLibrary: ObservableObject {

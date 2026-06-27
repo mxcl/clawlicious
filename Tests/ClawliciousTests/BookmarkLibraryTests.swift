@@ -1,5 +1,6 @@
 import XCTest
 @testable import Clawlicious
+@testable import ClawliciousCore
 
 final class BookmarkLibraryTests: XCTestCase {
     func testCodexAuthReaderPrefersEnvironmentKey() throws {

@@ -1,4 +1,5 @@
 import Foundation
+import ClawliciousCore
 
 protocol BookmarkSummarizing: Sendable {
     func summarize(url: URL, page: PageSnapshot, context: BookmarkLibraryContext) async throws -> BookmarkMetadata
@@ -8,12 +9,6 @@ struct CodexBookmarkSummarizer: BookmarkSummarizing {
     func summarize(url: URL, page: PageSnapshot, context: BookmarkLibraryContext) async throws -> BookmarkMetadata {
         return try await CodexResponsesClient().metadata(for: url, page: page, context: context)
     }
-}
-
-struct PageSnapshot: Sendable {
-    var title: String
-    var description: String
-    var markdown: String
 }
 
 struct BookmarkLibraryContext: Equatable, Sendable {
