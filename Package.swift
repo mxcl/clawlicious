@@ -12,7 +12,7 @@ let package = Package(
         .executableTarget(
             name: "Clawlicious",
             dependencies: ["ClawliciousCore"],
-            exclude: ["Info.plist"],
+            exclude: ["Info.plist", "Resources/AppIcon.icns"],
             linkerSettings: [
                 .unsafeFlags([
                     "-Xlinker", "-sectcreate",

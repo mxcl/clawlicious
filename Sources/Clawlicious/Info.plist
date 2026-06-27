@@ -6,6 +6,8 @@
     <string>dev.mxcl.clawlicious</string>
     <key>CFBundleName</key>
     <string>Clawlicious</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>NSAppleEventsUsageDescription</key>
     <string>Clawlicious needs browser automation access to bookmark the current page URL.</string>
 </dict>
