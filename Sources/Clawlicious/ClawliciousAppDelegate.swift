@@ -334,7 +334,17 @@ private enum CurrentBrowserURLReader {
         case "com.openai.atlas", "ChatGPT Atlas":
             return BrowserAutomation(
                 automationBundleIdentifier: "com.openai.atlas",
-                script: #"tell application "ChatGPT Atlas" to return URL of active tab of front window"#
+                script: """
+                tell application "ChatGPT Atlas"
+                  set fallbackURL to ""
+                  repeat with browserWindow in windows
+                    set tabURL to URL of active tab of browserWindow
+                    if fallbackURL is "" then set fallbackURL to tabURL
+                    if tabURL does not contain "ref=mini" and tabURL does not contain "ref=mini-sidebar" then return tabURL
+                  end repeat
+                  return fallbackURL
+                end tell
+                """
             )
         case "com.brave.Browser", "Brave Browser":
             return BrowserAutomation(
