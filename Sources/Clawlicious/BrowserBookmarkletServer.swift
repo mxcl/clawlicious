@@ -12,7 +12,7 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
     private init() {}
 
     var bookmarklet: String {
-        let endpoint = "http://127.0.0.1:\(port)/import?token=\(token)&url="
+        let endpoint = "http://127.0.0.1:\(port)/add?token=\(token)&url="
         return "javascript:(()=>{open('\(endpoint)'+encodeURIComponent(location.href),'clawlicious','popup,width=420,height=220')})()"
     }
 
@@ -27,10 +27,10 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
         Endpoints:
         - GET /bookmarks?token=\(token)
         - GET /search?token=\(token)&q=ai%20tech&from=YYYY-MM-DD&to=YYYY-MM-DD
-        - GET /add?token=\(token)&url=https%3A%2F%2Fexample.com&title=Title&summary=Summary&category=AI&tags=ai%2Ctech
+        - GET /agent/add?token=\(token)&url=https%3A%2F%2Fexample.com&title=Title&summary=Summary&category=AI&tags=ai%2Ctech
         - GET /update?token=\(token)&url=https%3A%2F%2Fexample.com&title=Better%20Title&summary=Better%20Summary&category=AI&tags=ai%2Ctech
 
-        Use /search for questions about saved links. Use /add to save a new link only after you have already summarized and tagged it. Use /update to edit metadata for an existing saved link. /add and /update reject incomplete data: url, title, summary, category, and tags are required. Date filters use createdAt.
+        Use /search for questions about saved links. Use /agent/add to save a new link only after you have already summarized and tagged it. Use /update to edit metadata for an existing saved link. /agent/add and /update reject incomplete data: url, title, summary, category, and tags are required. Date filters use createdAt.
         """
     }
 
@@ -86,12 +86,12 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
                 return
             }
 
-            if route.path == "/import", let urlString = route.query["url"], !urlString.isEmpty {
+            if ["/add", "/import"].contains(route.path), let urlString = route.query["url"], !urlString.isEmpty {
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(name: .clawliciousImportBookmark, object: urlString)
                 }
                 Self.respond("Sent to Clawlicious.", on: connection)
-            } else if route.path == "/add" {
+            } else if route.path == "/agent/add" {
                 guard let bookmark = Self.completeBookmark(route: route) else {
                     Self.respond("Missing complete bookmark data.", status: "400 Bad Request", on: connection)
                     return
@@ -138,7 +138,7 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
 
     static func importURLString(from request: String, expectedToken: String) -> String? {
         guard let route = route(from: request),
-              route.path == "/import",
+              ["/add", "/import"].contains(route.path),
               route.query["token"] == expectedToken,
               let urlString = route.query["url"],
               !urlString.isEmpty else {
@@ -158,7 +158,7 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
 
     static func completeBookmark(from request: String, expectedToken: String) -> Bookmark? {
         guard let route = route(from: request),
-              route.path == "/add",
+              route.path == "/agent/add",
               route.query["token"] == expectedToken else {
             return nil
         }

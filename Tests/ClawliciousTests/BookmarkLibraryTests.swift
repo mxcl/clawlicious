@@ -323,20 +323,24 @@ final class BookmarkLibraryTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: archived.path))
     }
 
-    func testBrowserBookmarkletImportRequiresTokenAndExtractsURL() {
-        let request = "GET /import?token=good&url=https%3A%2F%2Fexample.com%2Fswift%3Fa%3D1%26b%3D2 HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"
+    func testBrowserBookmarkletAddRequiresTokenAndExtractsURL() {
+        let request = "GET /add?token=good&url=https%3A%2F%2Fexample.com%2Fswift%3Fa%3D1%26b%3D2 HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"
 
         XCTAssertEqual(
             BrowserBookmarkletServer.importURLString(from: request, expectedToken: "good"),
             "https://example.com/swift?a=1&b=2"
         )
         XCTAssertNil(BrowserBookmarkletServer.importURLString(from: request, expectedToken: "bad"))
+        XCTAssertEqual(
+            BrowserBookmarkletServer.importURLString(from: request.replacingOccurrences(of: "/add?", with: "/import?"), expectedToken: "good"),
+            "https://example.com/swift?a=1&b=2"
+        )
     }
 
     func testAgentAddRequiresCompletePresummarizedBookmark() {
-        let complete = "GET /add?token=good&url=https%3A%2F%2Fexample.com%2Fai&title=AI%20Hardware&summary=Accelerator%20notes&category=AI&tags=ai%2Cchips HTTP/1.1\r\n\r\n"
-        let missingTags = "GET /add?token=good&url=https%3A%2F%2Fexample.com%2Fai&title=AI%20Hardware&summary=Accelerator%20notes&category=AI HTTP/1.1\r\n\r\n"
-        let urlOnly = "GET /add?token=good&url=https%3A%2F%2Fexample.com%2Fai HTTP/1.1\r\n\r\n"
+        let complete = "GET /agent/add?token=good&url=https%3A%2F%2Fexample.com%2Fai&title=AI%20Hardware&summary=Accelerator%20notes&category=AI&tags=ai%2Cchips HTTP/1.1\r\n\r\n"
+        let missingTags = "GET /agent/add?token=good&url=https%3A%2F%2Fexample.com%2Fai&title=AI%20Hardware&summary=Accelerator%20notes&category=AI HTTP/1.1\r\n\r\n"
+        let urlOnly = "GET /agent/add?token=good&url=https%3A%2F%2Fexample.com%2Fai HTTP/1.1\r\n\r\n"
 
         let bookmark = BrowserBookmarkletServer.completeBookmark(from: complete, expectedToken: "good")
         XCTAssertEqual(bookmark?.url.absoluteString, "https://example.com/ai")
@@ -347,6 +351,7 @@ final class BookmarkLibraryTests: XCTestCase {
         XCTAssertEqual(bookmark?.status, .summarized)
         XCTAssertNil(BrowserBookmarkletServer.completeBookmark(from: missingTags, expectedToken: "good"))
         XCTAssertNil(BrowserBookmarkletServer.completeBookmark(from: urlOnly, expectedToken: "good"))
+        XCTAssertNil(BrowserBookmarkletServer.completeBookmark(from: urlOnly.replacingOccurrences(of: "/agent/add?", with: "/add?"), expectedToken: "good"))
         XCTAssertNil(BrowserBookmarkletServer.completeBookmark(from: complete, expectedToken: "bad"))
     }
 
