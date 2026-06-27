@@ -117,6 +117,36 @@ final class BookmarkLibraryTests: XCTestCase {
         XCTAssertEqual(saved.value.first?.status, .summarized)
     }
 
+    @MainActor
+    func testUpdatingBookmarkMetadataPreservesIdentityAndCreatedAt() throws {
+        let saved = SavedBookmarks()
+        var existing = testBookmark(title: "Old", url: "https://example.com/ai")
+        existing.summary = "Old summary"
+        existing.createdAt = try XCTUnwrap(Calendar.current.date(from: DateComponents(year: 2026, month: 6, day: 1)))
+        let savedExisting = existing
+        var metadata = testBookmark(title: "New AI Hardware", url: "https://example.com/ai")
+        metadata.summary = "New accelerator notes"
+        metadata.tags = ["AI Tech"]
+        metadata.category = "machine learning"
+        let library = BookmarkLibrary(
+            store: BookmarkStore(
+                load: { [savedExisting] },
+                save: { saved.value = $0 }
+            ),
+            summarizer: FailingSummarizer()
+        )
+
+        library.updateBookmarkMetadata(metadata)
+
+        XCTAssertEqual(library.bookmarks.first?.id, existing.id)
+        XCTAssertEqual(library.bookmarks.first?.createdAt, existing.createdAt)
+        XCTAssertEqual(library.bookmarks.first?.title, "New AI Hardware")
+        XCTAssertEqual(library.bookmarks.first?.summary, "New accelerator notes")
+        XCTAssertEqual(library.bookmarks.first?.tags, ["ai-tech"])
+        XCTAssertEqual(library.bookmarks.first?.category, "Machine Learning")
+        XCTAssertEqual(saved.value.first?.status, .summarized)
+    }
+
     func testBrowserBookmarkletImportRequiresTokenAndExtractsURL() {
         let request = "GET /import?token=good&url=https%3A%2F%2Fexample.com%2Fswift%3Fa%3D1%26b%3D2 HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"
 
@@ -142,6 +172,23 @@ final class BookmarkLibraryTests: XCTestCase {
         XCTAssertNil(BrowserBookmarkletServer.completeBookmark(from: missingTags, expectedToken: "good"))
         XCTAssertNil(BrowserBookmarkletServer.completeBookmark(from: urlOnly, expectedToken: "good"))
         XCTAssertNil(BrowserBookmarkletServer.completeBookmark(from: complete, expectedToken: "bad"))
+    }
+
+    func testAgentUpdateRequiresCompleteMetadataForExistingBookmark() {
+        let existing = testBookmark(title: "Old", url: "https://example.com/ai")
+        let complete = "GET /update?token=good&url=https%3A%2F%2Fexample.com%2Fai&title=New%20AI%20Hardware&summary=New%20notes&category=AI&tags=ai%2Cchips HTTP/1.1\r\n\r\n"
+        let missingTitle = "GET /update?token=good&url=https%3A%2F%2Fexample.com%2Fai&summary=New%20notes&category=AI&tags=ai%2Cchips HTTP/1.1\r\n\r\n"
+        let unknownURL = "GET /update?token=good&url=https%3A%2F%2Fexample.com%2Funknown&title=New%20AI%20Hardware&summary=New%20notes&category=AI&tags=ai%2Cchips HTTP/1.1\r\n\r\n"
+
+        let bookmark = BrowserBookmarkletServer.metadataUpdate(from: complete, expectedToken: "good", bookmarks: [existing])
+        XCTAssertEqual(bookmark?.url, existing.url)
+        XCTAssertEqual(bookmark?.title, "New AI Hardware")
+        XCTAssertEqual(bookmark?.summary, "New notes")
+        XCTAssertEqual(bookmark?.category, "AI")
+        XCTAssertEqual(bookmark?.tags, ["ai", "chips"])
+        XCTAssertNil(BrowserBookmarkletServer.metadataUpdate(from: missingTitle, expectedToken: "good", bookmarks: [existing]))
+        XCTAssertNil(BrowserBookmarkletServer.metadataUpdate(from: unknownURL, expectedToken: "good", bookmarks: [existing]))
+        XCTAssertNil(BrowserBookmarkletServer.metadataUpdate(from: complete, expectedToken: "bad", bookmarks: [existing]))
     }
 
     func testAgentSearchAPIRequiresTokenAndFiltersBookmarks() throws {

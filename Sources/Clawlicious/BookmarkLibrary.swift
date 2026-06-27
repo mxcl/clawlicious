@@ -116,6 +116,25 @@ final class BookmarkLibrary: ObservableObject {
         statusLine = "Saved \(bookmark.title)."
     }
 
+    func updateBookmarkMetadata(_ metadata: Bookmark) {
+        guard let index = bookmarks.firstIndex(where: { $0.url == metadata.url }) else {
+            statusLine = "Bookmark not found."
+            return
+        }
+
+        bookmarks[index].title = metadata.title
+        bookmarks[index].summary = metadata.summary
+        bookmarks[index].tags = normalizeTags(metadata.tags)
+        bookmarks[index].category = normalizeCategory(metadata.category)
+        bookmarks[index].status = .summarized
+        bookmarks[index].error = nil
+        bookmarks[index].contentWarning = metadata.contentWarning?.cleanedSingleLine.nilIfEmpty
+        bookmarks[index].updatedAt = Date()
+        selectedID = bookmarks[index].id
+        save()
+        statusLine = "Updated \(bookmarks[index].title)."
+    }
+
     func retryBookmark(_ bookmark: Bookmark) {
         retrySummary(bookmark.id, url: bookmark.url)
     }

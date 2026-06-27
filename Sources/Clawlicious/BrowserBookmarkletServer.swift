@@ -27,8 +27,9 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
         - GET /bookmarks?token=\(token)
         - GET /search?token=\(token)&q=ai%20tech&from=YYYY-MM-DD&to=YYYY-MM-DD
         - GET /add?token=\(token)&url=https%3A%2F%2Fexample.com&title=Title&summary=Summary&category=AI&tags=ai%2Ctech
+        - GET /update?token=\(token)&url=https%3A%2F%2Fexample.com&title=Better%20Title&summary=Better%20Summary&category=AI&tags=ai%2Ctech
 
-        Use /search for questions about saved links. Use /add to save a new link only after you have already summarized and tagged it. /add rejects incomplete data: url, title, summary, category, and tags are required. Date filters use createdAt.
+        Use /search for questions about saved links. Use /add to save a new link only after you have already summarized and tagged it. Use /update to edit metadata for an existing saved link. /add and /update reject incomplete data: url, title, summary, category, and tags are required. Date filters use createdAt.
         """
     }
 
@@ -96,6 +97,26 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
                         Self.respond("Saved to Clawlicious.", on: connection)
                     }
                 }
+            } else if route.path == "/update" {
+                guard let bookmark = Self.completeBookmark(route: route) else {
+                    Self.respond("Missing complete bookmark data.", status: "400 Bad Request", on: connection)
+                    return
+                }
+                do {
+                    guard try BookmarkStore.live.load().contains(where: { $0.url == bookmark.url }) else {
+                        Self.respond("Bookmark not found.", status: "404 Not Found", on: connection)
+                        return
+                    }
+                } catch {
+                    Self.respond(error.localizedDescription, status: "500 Internal Server Error", on: connection)
+                    return
+                }
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: .clawliciousUpdateBookmarkMetadata, object: bookmark)
+                    self.queue.async {
+                        Self.respond("Updated Clawlicious metadata.", on: connection)
+                    }
+                }
             } else if ["/bookmarks", "/search"].contains(route.path) {
                 do {
                     let bookmarks = try Self.apiBookmarks(route: route, bookmarks: BookmarkStore.live.load())
@@ -137,6 +158,17 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
             return nil
         }
         return completeBookmark(route: route)
+    }
+
+    static func metadataUpdate(from request: String, expectedToken: String, bookmarks: [Bookmark]) -> Bookmark? {
+        guard let route = route(from: request),
+              route.path == "/update",
+              route.query["token"] == expectedToken,
+              let bookmark = completeBookmark(route: route),
+              bookmarks.contains(where: { $0.url == bookmark.url }) else {
+            return nil
+        }
+        return bookmark
     }
 
     private static func route(from request: String) -> Route? {

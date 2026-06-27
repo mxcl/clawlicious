@@ -70,6 +70,11 @@ struct ContentView: View {
             library.addCompleteBookmark(bookmark)
             NSApp.activate(ignoringOtherApps: true)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .clawliciousUpdateBookmarkMetadata)) { notification in
+            guard let bookmark = notification.object as? Bookmark else { return }
+            library.updateBookmarkMetadata(bookmark)
+            NSApp.activate(ignoringOtherApps: true)
+        }
         .onReceive(NotificationCenter.default.publisher(for: .clawliciousBrowserImportStatus)) { notification in
             if let message = notification.object as? String {
                 library.statusLine = message

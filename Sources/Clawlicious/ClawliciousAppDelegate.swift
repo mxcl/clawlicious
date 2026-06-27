@@ -4,6 +4,7 @@ extension Notification.Name {
     static let clawliciousNewBookmark = Notification.Name("ClawliciousNewBookmark")
     static let clawliciousImportBookmark = Notification.Name("ClawliciousImportBookmark")
     static let clawliciousImportCompleteBookmark = Notification.Name("ClawliciousImportCompleteBookmark")
+    static let clawliciousUpdateBookmarkMetadata = Notification.Name("ClawliciousUpdateBookmarkMetadata")
     static let clawliciousBrowserImportStatus = Notification.Name("ClawliciousBrowserImportStatus")
     static let clawliciousDeleteBookmark = Notification.Name("ClawliciousDeleteBookmark")
     static let clawliciousResummarizeBookmark = Notification.Name("ClawliciousResummarizeBookmark")
