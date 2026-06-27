@@ -564,20 +564,28 @@ private struct TitlebarControlsContent: View {
                 .frame(width: sidebarWidth)
                 .allowsHitTesting(false)
 
-            AddBookmarkField(library: library, isFocused: isAddingBookmark)
-                .padding(.horizontal, 10)
-                .frame(width: bookmarkColumnWidth)
+            ZStack(alignment: .leading) {
+                LiquidGlassSurface(material: .bar, tint: .clear)
+                    .overlay(alignment: .bottom) { Divider() }
 
-            if hasBookmark {
-                BrowserControls(browser: browser)
-                    .padding(.leading, 10)
-                    .padding(.trailing, 12)
-                    .frame(width: detailColumnWidth, alignment: .leading)
-            } else {
-                Color.clear
-                    .frame(width: detailColumnWidth)
-                    .allowsHitTesting(false)
+                HStack(spacing: 0) {
+                    AddBookmarkField(library: library, isFocused: isAddingBookmark)
+                        .padding(.horizontal, 10)
+                        .frame(width: bookmarkColumnWidth)
+
+                    if hasBookmark {
+                        BrowserControls(browser: browser)
+                            .padding(.leading, 10)
+                            .padding(.trailing, 12)
+                            .frame(width: detailColumnWidth, alignment: .leading)
+                    } else {
+                        Color.clear
+                            .frame(width: detailColumnWidth)
+                            .allowsHitTesting(false)
+                    }
+                }
             }
+            .frame(width: contentColumnWidth, height: 52)
         }
         .frame(width: totalWidth, height: 52, alignment: .leading)
         .allowsHitTesting(true)
@@ -585,6 +593,10 @@ private struct TitlebarControlsContent: View {
 
     private var sidebarWidth: CGFloat {
         max(0, totalWidth - bookmarkColumnWidth - detailColumnWidth)
+    }
+
+    private var contentColumnWidth: CGFloat {
+        bookmarkColumnWidth + detailColumnWidth
     }
 }
 
