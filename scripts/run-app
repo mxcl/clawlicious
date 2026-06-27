@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+swift build
+bin_dir="$(swift build --show-bin-path)"
+app="$bin_dir/Clawlicious.app"
+
+rm -rf "$app"
+mkdir -p "$app/Contents/MacOS"
+cp "$bin_dir/Clawlicious" "$app/Contents/MacOS/Clawlicious"
+cp Sources/Clawlicious/Info.plist "$app/Contents/Info.plist"
+
+/usr/libexec/PlistBuddy -c "Add :CFBundleExecutable string Clawlicious" "$app/Contents/Info.plist" >/dev/null
+/usr/libexec/PlistBuddy -c "Add :CFBundlePackageType string APPL" "$app/Contents/Info.plist" >/dev/null
+/usr/libexec/PlistBuddy -c "Add :CFBundleVersion string 1" "$app/Contents/Info.plist" >/dev/null
+/usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string 1.0" "$app/Contents/Info.plist" >/dev/null
+
+xattr -cr "$app"
+codesign --force --sign - "$app" >/dev/null
+open -n "$app"
