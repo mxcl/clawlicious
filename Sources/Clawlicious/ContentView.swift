@@ -156,17 +156,15 @@ private struct AddBookmarkField: View {
     var body: some View {
         HStack(spacing: 8) {
             TextField("Add bookmark URL", text: $library.newURLString)
-                .textFieldStyle(.plain)
+                .textFieldStyle(.roundedBorder)
                 .focused(isFocused)
                 .onSubmit { library.addBookmarkFromField() }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 5)
-                .glassEffect(.regular.interactive(), in: Capsule())
             Button {
                 library.addBookmarkFromField()
             } label: {
                 Image(systemName: "plus")
             }
+            .buttonStyle(.borderless)
             .help("Add bookmark")
 
             Button {
@@ -176,11 +174,10 @@ private struct AddBookmarkField: View {
             } label: {
                 Image(systemName: "link")
             }
+            .buttonStyle(.borderless)
             .help("Copy agent app connection instructions")
             .accessibilityLabel("Connect Agent App")
         }
-        .buttonStyle(.glass)
-        .buttonSizing(.fitted)
         .controlSize(.small)
     }
 }
@@ -571,11 +568,8 @@ private struct TitlebarControlsContent: View {
                 .allowsHitTesting(false)
 
             ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(.clear)
-                    .glassEffect()
-                    .padding(.trailing, 8)
-                    .padding(.vertical, 6)
+                LiquidGlassSurface(material: .bar, tint: .clear)
+                    .overlay(alignment: .bottom) { Divider() }
 
                 HStack(spacing: 0) {
                     AddBookmarkField(library: library, isFocused: isAddingBookmark)
@@ -653,12 +647,11 @@ private struct BrowserControls: View {
                 .truncationMode(.middle)
                 .textSelection(.enabled)
                 .frame(minWidth: 220, maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 5)
-                .glassEffect(.regular, in: Capsule())
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 5))
         }
-        .buttonStyle(.glass)
-        .buttonSizing(.fitted)
+        .buttonStyle(.borderless)
         .controlSize(.small)
     }
 }

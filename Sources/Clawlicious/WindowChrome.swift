@@ -18,7 +18,7 @@ struct WindowChrome: NSViewRepresentable {
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
-        window.toolbarStyle = .unifiedCompact
+        window.toolbarStyle = .unified
         window.isMovableByWindowBackground = true
         window.backgroundColor = .clear
         window.isOpaque = false

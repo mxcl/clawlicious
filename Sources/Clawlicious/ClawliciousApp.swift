@@ -8,7 +8,6 @@ struct ClawliciousApp: App {
             ContentView()
         }
         .defaultSize(width: 1360, height: 820)
-        .windowToolbarStyle(.unifiedCompact)
     }
 }
 
