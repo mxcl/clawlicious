@@ -357,7 +357,7 @@ private func normalizedURL(_ raw: String) -> URL? {
     return url
 }
 
-private func normalizeTags(_ values: [String]) -> [String] {
+func normalizeTags(_ values: [String]) -> [String] {
     sortedUnique(values.map(normalizeTag).filter { !$0.isEmpty })
 }
 
@@ -368,7 +368,7 @@ private func normalizeTag(_ value: String) -> String {
         .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
 }
 
-private func normalizeCategory(_ value: String) -> String {
+func normalizeCategory(_ value: String) -> String {
     let category = value.cleanedSingleLine
     return category.isEmpty ? "Uncategorized" : category.localizedCapitalized
 }

@@ -96,11 +96,11 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
                     Self.respond("Missing complete bookmark data.", status: "400 Bad Request", on: connection)
                     return
                 }
-                DispatchQueue.main.async {
-                    NotificationCenter.default.post(name: .clawliciousImportCompleteBookmark, object: bookmark)
-                    self.queue.async {
-                        Self.respond("Saved to Clawlicious.", on: connection)
-                    }
+                do {
+                    let saved = try Self.addCompleteBookmark(bookmark)
+                    Self.respond(saved ? "Saved to Clawlicious." : "Bookmark already saved.", on: connection)
+                } catch {
+                    Self.respond(error.localizedDescription, status: "500 Internal Server Error", on: connection)
                 }
             } else if route.path == "/update" {
                 guard let bookmark = Self.completeBookmark(route: route) else {
@@ -108,19 +108,13 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
                     return
                 }
                 do {
-                    guard try BookmarkStore.live.load().contains(where: { $0.url == bookmark.url }) else {
+                    guard try Self.updateBookmarkMetadata(bookmark) else {
                         Self.respond("Bookmark not found.", status: "404 Not Found", on: connection)
                         return
                     }
+                    Self.respond("Updated Clawlicious metadata.", on: connection)
                 } catch {
                     Self.respond(error.localizedDescription, status: "500 Internal Server Error", on: connection)
-                    return
-                }
-                DispatchQueue.main.async {
-                    NotificationCenter.default.post(name: .clawliciousUpdateBookmarkMetadata, object: bookmark)
-                    self.queue.async {
-                        Self.respond("Updated Clawlicious metadata.", on: connection)
-                    }
                 }
             } else if ["/bookmarks", "/search"].contains(route.path) {
                 do {
@@ -185,9 +179,42 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
         return Route(
             path: components.path,
             query: Dictionary((components.queryItems ?? []).compactMap { item in
-                item.value.map { (item.name, $0) }
+                item.value.map { (item.name, $0.replacingOccurrences(of: "+", with: " ")) }
             }, uniquingKeysWith: { _, new in new })
         )
+    }
+
+    @discardableResult
+    private static func addCompleteBookmark(_ bookmark: Bookmark) throws -> Bool {
+        var bookmarks = try BookmarkStore.live.load()
+        guard !bookmarks.contains(where: { $0.url == bookmark.url }) else { return false }
+        var bookmark = bookmark
+        bookmark.tags = normalizeTags(bookmark.tags)
+        bookmark.category = normalizeCategory(bookmark.category)
+        bookmark.status = .summarized
+        bookmark.error = nil
+        bookmark.contentWarning = bookmark.contentWarning?.cleanedSingleLine.nilIfEmpty
+        bookmarks.insert(bookmark, at: 0)
+        try BookmarkStore.live.save(bookmarks)
+        return true
+    }
+
+    @discardableResult
+    private static func updateBookmarkMetadata(_ metadata: Bookmark) throws -> Bool {
+        var bookmarks = try BookmarkStore.live.load()
+        guard let index = bookmarks.firstIndex(where: { $0.url == metadata.url }) else { return false }
+
+        bookmarks[index].title = metadata.title
+        bookmarks[index].summary = metadata.summary
+        bookmarks[index].tags = normalizeTags(metadata.tags)
+        bookmarks[index].category = normalizeCategory(metadata.category)
+        bookmarks[index].status = .summarized
+        bookmarks[index].error = nil
+        bookmarks[index].contentWarning = metadata.contentWarning?.cleanedSingleLine.nilIfEmpty
+        bookmarks[index].updatedAt = Date()
+        try BookmarkStore.live.save(bookmarks)
+        try BookmarkMarkdownStore.live.updateMetadata(bookmarks[index])
+        return true
     }
 
     private static func apiBookmarks(route: Route, bookmarks: [Bookmark]) -> [Bookmark] {

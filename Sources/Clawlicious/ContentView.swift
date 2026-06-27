@@ -63,17 +63,14 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .clawliciousImportBookmark)) { notification in
             guard let urlString = notification.object as? String else { return }
             library.addBookmark(urlString)
-            NSApp.activate(ignoringOtherApps: true)
         }
         .onReceive(NotificationCenter.default.publisher(for: .clawliciousImportCompleteBookmark)) { notification in
             guard let bookmark = notification.object as? Bookmark else { return }
             library.addCompleteBookmark(bookmark)
-            NSApp.activate(ignoringOtherApps: true)
         }
         .onReceive(NotificationCenter.default.publisher(for: .clawliciousUpdateBookmarkMetadata)) { notification in
             guard let bookmark = notification.object as? Bookmark else { return }
             library.updateBookmarkMetadata(bookmark)
-            NSApp.activate(ignoringOtherApps: true)
         }
         .onReceive(NotificationCenter.default.publisher(for: .clawliciousBrowserImportStatus)) { notification in
             if let message = notification.object as? String {
