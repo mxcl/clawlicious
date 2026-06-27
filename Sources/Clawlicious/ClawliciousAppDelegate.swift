@@ -365,7 +365,7 @@ private enum CurrentBrowserURLReader {
         }
         defer { AEDisposeDesc(&target) }
 
-        let permissionStatus = AEDeterminePermissionToAutomateTarget(&target, typeWildCard, typeWildCard, true)
+        let permissionStatus = AEDeterminePermissionToAutomateTarget(&target, AEEventClass(kAECoreSuite), AEEventID(kAEGetData), true)
         guard permissionStatus == noErr else {
             throw AppleEventPermissionError(status: permissionStatus)
         }
