@@ -20,6 +20,7 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
         """
         ```md
         Clawlicious is a local app for managing my saved bookmarks.
+        Use this as a plain chat; no project/workspace is needed.
 
         Base URL: http://127.0.0.1:\(port)
         Token: \(token)
@@ -28,8 +29,10 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
         Endpoints:
         - GET /bookmarks?token=\(token)
         - GET /search?token=\(token)&q=ai%20tech&from=YYYY-MM-DD&to=YYYY-MM-DD
-        - GET /agent/add?token=\(token)&url=https%3A%2F%2Fexample.com&title=Title&summary=Summary&category=AI&tags=ai%2Ctech
-        - GET /update?token=\(token)&url=https%3A%2F%2Fexample.com&title=Better%20Title&summary=Better%20Summary&category=AI&tags=ai%2Ctech
+        - POST /agent/add?token=\(token)
+          Body: url=https%3A%2F%2Fexample.com&title=Title&summary=Summary&category=AI&tags=ai%2Ctech
+        - POST /update?token=\(token)
+          Body: url=https%3A%2F%2Fexample.com&title=Better%20Title&summary=Better%20Summary&category=AI&tags=ai%2Ctech
 
         Use /search for questions about saved links. Use /agent/add to save a
         new link only after you have already summarized and tagged it. Use
@@ -179,15 +182,28 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
     private static func route(from request: String) -> Route? {
         guard let line = request.components(separatedBy: "\r\n").first else { return nil }
         let parts = line.split(separator: " ", maxSplits: 2)
-        guard parts.count == 3, parts[0] == "GET" else { return nil }
+        guard parts.count == 3, ["GET", "POST"].contains(parts[0]) else { return nil }
         guard let components = URLComponents(string: "http://127.0.0.1\(parts[1])"),
               !components.path.isEmpty else { return nil }
+        var query = fields(from: components.queryItems ?? [])
+        if parts[0] == "POST", let body = request.components(separatedBy: "\r\n\r\n").dropFirst().first {
+            query.merge(fields(fromFormBody: body), uniquingKeysWith: { _, new in new })
+        }
         return Route(
             path: components.path,
-            query: Dictionary((components.queryItems ?? []).compactMap { item in
-                item.value.map { (item.name, $0.replacingOccurrences(of: "+", with: " ")) }
-            }, uniquingKeysWith: { _, new in new })
+            query: query
         )
+    }
+
+    private static func fields(from queryItems: [URLQueryItem]) -> [String: String] {
+        Dictionary(queryItems.compactMap { item in
+            item.value.map { (item.name, $0.replacingOccurrences(of: "+", with: " ")) }
+        }, uniquingKeysWith: { _, new in new })
+    }
+
+    private static func fields(fromFormBody body: String) -> [String: String] {
+        guard let components = URLComponents(string: "http://127.0.0.1?\(body)") else { return [:] }
+        return fields(from: components.queryItems ?? [])
     }
 
     @discardableResult

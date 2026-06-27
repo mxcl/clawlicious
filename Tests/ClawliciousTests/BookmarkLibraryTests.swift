@@ -367,6 +367,23 @@ final class BookmarkLibraryTests: XCTestCase {
         XCTAssertEqual(bookmark?.category, "AI & Agents")
     }
 
+    func testAgentAddAcceptsPostFormBody() {
+        let request = """
+        POST /agent/add?token=good HTTP/1.1\r
+        Content-Type: application/x-www-form-urlencoded\r
+        \r
+        url=https%3A%2F%2Fexample.com%2Fai&title=AI+Hardware&summary=New+accelerator+notes&category=AI+%26+Agents&tags=ai%2Cchips
+        """
+
+        let bookmark = BrowserBookmarkletServer.completeBookmark(from: request, expectedToken: "good")
+
+        XCTAssertEqual(bookmark?.url.absoluteString, "https://example.com/ai")
+        XCTAssertEqual(bookmark?.title, "AI Hardware")
+        XCTAssertEqual(bookmark?.summary, "New accelerator notes")
+        XCTAssertEqual(bookmark?.category, "AI & Agents")
+        XCTAssertEqual(bookmark?.tags, ["ai", "chips"])
+    }
+
     func testAgentUpdateRequiresCompleteMetadataForExistingBookmark() {
         let existing = testBookmark(title: "Old", url: "https://example.com/ai")
         let complete = "GET /update?token=good&url=https%3A%2F%2Fexample.com%2Fai&title=New%20AI%20Hardware&summary=New%20notes&category=AI&tags=ai%2Cchips HTTP/1.1\r\n\r\n"
