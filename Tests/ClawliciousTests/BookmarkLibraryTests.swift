@@ -30,6 +30,33 @@ final class BookmarkLibraryTests: XCTestCase {
         XCTAssertEqual(auth, CodexAuth(token: "file-key", source: .authAPIKey, scopes: [], authMode: "chatgpt"))
     }
 
+    func testMissingBookmarkStoreSeedsThreeOnboardingBookmarks() throws {
+        let url = try temporaryDirectory().appending(path: "bookmarks.json")
+        let store = BookmarkStore.at({ url }, seedOnMissing: true)
+
+        let bookmarks = try store.load()
+
+        XCTAssertEqual(bookmarks.map(\.title), ["Welcome & Overview", "Adding Bookmarks", "Bringing Your Agent"])
+        XCTAssertEqual(bookmarks.map(\.status), [.summarized, .summarized, .summarized])
+        XCTAssertEqual(bookmarks.map(\.category), ["Onboarding", "Onboarding", "Onboarding"])
+        XCTAssertEqual(bookmarks.map(\.url.absoluteString), [
+            "https://clawlicious.app/docs/welcome-overview",
+            "https://clawlicious.app/docs/adding-bookmarks",
+            "https://clawlicious.app/docs/bringing-your-agent"
+        ])
+        XCTAssertTrue(bookmarks[1].summary.contains("Command-Control-Option-B"))
+        XCTAssertTrue(bookmarks[1].summary.localizedCaseInsensitiveContains("bookmarklet"))
+        XCTAssertEqual(try JSONDecoder.clawlicious.decode([Bookmark].self, from: Data(contentsOf: url)), bookmarks)
+    }
+
+    func testExistingEmptyBookmarkStoreDoesNotReseedOnboarding() throws {
+        let url = try temporaryDirectory().appending(path: "bookmarks.json")
+        try JSONEncoder.clawlicious.encode([Bookmark]()).write(to: url)
+        let store = BookmarkStore.at({ url }, seedOnMissing: true)
+
+        XCTAssertEqual(try store.load(), [])
+    }
+
     @MainActor
     func testLocalSearchDoesNotInvokeSummarizer() {
         let bookmark = Bookmark(
