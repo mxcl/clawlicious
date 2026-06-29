@@ -1,12 +1,10 @@
 import AppKit
-import Carbon.HIToolbox
-
-private let bookmarkBrowserHotKeySignature = OSType(0x434C4157) // CLAW
-private let bookmarkBrowserHotKeyID = UInt32(1)
+import ClawliciousBrowser
 
 extension Notification.Name {
     static let clawliciousNewBookmark = Notification.Name("ClawliciousNewBookmark")
     static let clawliciousImportBookmark = Notification.Name("ClawliciousImportBookmark")
+    static let clawliciousQueuedImportBookmark = Notification.Name("ClawliciousQueuedImportBookmark")
     static let clawliciousImportCompleteBookmark = Notification.Name("ClawliciousImportCompleteBookmark")
     static let clawliciousUpdateBookmarkMetadata = Notification.Name("ClawliciousUpdateBookmarkMetadata")
     static let clawliciousBrowserImportStatus = Notification.Name("ClawliciousBrowserImportStatus")
@@ -18,8 +16,6 @@ extension Notification.Name {
 @MainActor
 final class ClawliciousAppDelegate: NSObject, NSApplicationDelegate {
     private let menuTarget = MenuTarget()
-    private var bookmarkBrowserHotKeyRef: EventHotKeyRef?
-    private var bookmarkBrowserHotKeyHandler: EventHandlerRef?
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -28,9 +24,9 @@ final class ClawliciousAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         DispatchQueue.main.async { [weak self] in
             self?.installMainMenu()
-            self?.installBookmarkBrowserHotKey()
             NSApp.activate(ignoringOtherApps: true)
         }
+        MenuBarHelperLauncher.launchIfNeeded()
         BrowserBookmarkletServer.shared.start()
         Task {
             await CodexAppServerSession.shared.warmUpIfNeeded()
@@ -43,12 +39,15 @@ final class ClawliciousAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    func applicationWillTerminate(_ notification: Notification) {
-        if let bookmarkBrowserHotKeyRef {
-            UnregisterEventHotKey(bookmarkBrowserHotKeyRef)
-        }
-        if let bookmarkBrowserHotKeyHandler {
-            RemoveEventHandler(bookmarkBrowserHotKeyHandler)
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls where url.scheme == "clawlicious" {
+            guard url.host == "import",
+                  let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+                  let urlString = components.queryItems?.first(where: { $0.name == "url" })?.value,
+                  !urlString.isEmpty else {
+                continue
+            }
+            ImportURLQueue.shared.enqueue(urlString)
         }
     }
 
@@ -69,9 +68,8 @@ final class ClawliciousAppDelegate: NSObject, NSApplicationDelegate {
         let bookmark = NSMenu()
         let new = bookmark.addItem(withTitle: "New Bookmark", action: #selector(MenuTarget.newBookmark(_:)), keyEquivalent: "n")
         new.target = menuTarget
-        let bookmarkBrowserPage = bookmark.addItem(withTitle: "Bookmark Current Browser Page", action: #selector(MenuTarget.bookmarkCurrentBrowserPage(_:)), keyEquivalent: "b")
+        let bookmarkBrowserPage = bookmark.addItem(withTitle: "Bookmark Current Browser Page", action: #selector(MenuTarget.bookmarkCurrentBrowserPage(_:)), keyEquivalent: "")
         bookmarkBrowserPage.target = menuTarget
-        bookmarkBrowserPage.keyEquivalentModifierMask = [.command, .control, .option]
         let copyBookmarklet = bookmark.addItem(withTitle: "Copy Browser Bookmarklet", action: #selector(MenuTarget.copyBrowserBookmarklet(_:)), keyEquivalent: "")
         copyBookmarklet.target = menuTarget
         bookmark.addItem(.separator())
@@ -185,46 +183,6 @@ final class ClawliciousAppDelegate: NSObject, NSApplicationDelegate {
         NSSelectorFromString(name)
     }
 
-    private func installBookmarkBrowserHotKey() {
-        guard bookmarkBrowserHotKeyRef == nil else { return }
-
-        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        let userData = Unmanaged.passUnretained(menuTarget).toOpaque()
-        let handlerStatus = InstallEventHandler(GetApplicationEventTarget(), { _, event, userData in
-            guard let event, let userData else { return noErr }
-
-            var hotKeyID = EventHotKeyID()
-            GetEventParameter(
-                event,
-                EventParamName(kEventParamDirectObject),
-                EventParamType(typeEventHotKeyID),
-                nil,
-                MemoryLayout<EventHotKeyID>.size,
-                nil,
-                &hotKeyID
-            )
-
-            guard hotKeyID.signature == bookmarkBrowserHotKeySignature, hotKeyID.id == bookmarkBrowserHotKeyID else {
-                return noErr
-            }
-
-            let sourceApp = BrowserApp(NSWorkspace.shared.frontmostApplication)
-            let target = Unmanaged<MenuTarget>.fromOpaque(userData).takeUnretainedValue()
-            Task { @MainActor in
-                target.bookmarkCurrentBrowserPage(from: sourceApp)
-            }
-            return noErr
-        }, 1, &eventType, userData, &bookmarkBrowserHotKeyHandler)
-        guard handlerStatus == noErr else { return }
-
-        var hotKeyRef: EventHotKeyRef?
-        let hotKeyID = EventHotKeyID(signature: bookmarkBrowserHotKeySignature, id: bookmarkBrowserHotKeyID)
-        let modifiers = UInt32(cmdKey | controlKey | optionKey)
-        let hotKeyStatus = RegisterEventHotKey(UInt32(kVK_ANSI_B), modifiers, hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
-        if hotKeyStatus == noErr {
-            bookmarkBrowserHotKeyRef = hotKeyRef
-        }
-    }
 }
 
 private extension NSMenu {
@@ -300,136 +258,5 @@ private final class MenuTarget: NSObject, NSMenuItemValidation {
 
     @objc private func bookmarkSelectionChanged(_ notification: Notification) {
         hasSelectedBookmark = notification.object != nil
-    }
-}
-
-private enum CurrentBrowserURLReader {
-    static func urlString(from app: BrowserApp?) async throws -> String? {
-        guard let browser = browser(for: app) else { return nil }
-        return try await Task.detached {
-            try requestAutomationPermission(for: browser.automationBundleIdentifier)
-
-            var error: NSDictionary?
-            let result = NSAppleScript(source: browser.script)?.executeAndReturnError(&error)
-            if let error {
-                throw AppleScriptError(error)
-            }
-            let urlString = result?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return urlString.isEmpty ? nil : urlString
-        }.value
-    }
-
-    private static func browser(for app: BrowserApp?) -> BrowserAutomation? {
-        switch app?.bundleIdentifier ?? app?.localizedName {
-        case "com.apple.Safari", "Safari":
-            return BrowserAutomation(
-                automationBundleIdentifier: "com.apple.Safari",
-                script: #"tell application "Safari" to return URL of current tab of front window"#
-            )
-        case "com.google.Chrome", "Google Chrome":
-            return BrowserAutomation(
-                automationBundleIdentifier: "com.google.Chrome",
-                script: #"tell application "Google Chrome" to return URL of active tab of front window"#
-            )
-        case "com.openai.atlas", "ChatGPT Atlas":
-            return BrowserAutomation(
-                automationBundleIdentifier: "com.openai.atlas",
-                script: """
-                tell application "ChatGPT Atlas"
-                  set fallbackURL to ""
-                  repeat with browserWindow in windows
-                    set tabURL to URL of active tab of browserWindow
-                    if fallbackURL is "" then set fallbackURL to tabURL
-                    if tabURL does not contain "ref=mini" and tabURL does not contain "ref=mini-sidebar" then return tabURL
-                  end repeat
-                  return fallbackURL
-                end tell
-                """
-            )
-        case "com.brave.Browser", "Brave Browser":
-            return BrowserAutomation(
-                automationBundleIdentifier: "com.brave.Browser",
-                script: #"tell application "Brave Browser" to return URL of active tab of front window"#
-            )
-        case "com.microsoft.edgemac", "Microsoft Edge":
-            return BrowserAutomation(
-                automationBundleIdentifier: "com.microsoft.edgemac",
-                script: #"tell application "Microsoft Edge" to return URL of active tab of front window"#
-            )
-        case "org.mozilla.firefox", "Firefox":
-            return BrowserAutomation(
-                automationBundleIdentifier: "com.apple.systemevents",
-                script: #"tell application "System Events" to tell application process "Firefox" to return value of combo box 1 of group 1 of toolbar "Navigation" of group 1 of front window"#
-            )
-        case "company.thebrowser.Browser", "Arc":
-            return BrowserAutomation(
-                automationBundleIdentifier: "company.thebrowser.Browser",
-                script: #"tell application "Arc" to return URL of active tab of front window"#
-            )
-        default:
-            return nil
-        }
-    }
-
-    private static func requestAutomationPermission(for bundleIdentifier: String) throws {
-        var target = AEAddressDesc()
-        let createStatus = bundleIdentifier.withCString {
-            AECreateDesc(typeApplicationBundleID, $0, bundleIdentifier.utf8.count, &target)
-        }
-        guard createStatus == noErr else {
-            throw AppleEventPermissionError(status: OSStatus(createStatus))
-        }
-        defer { AEDisposeDesc(&target) }
-
-        let permissionStatus = AEDeterminePermissionToAutomateTarget(&target, AEEventClass(kAECoreSuite), AEEventID(kAEGetData), true)
-        guard permissionStatus == noErr else {
-            throw AppleEventPermissionError(status: permissionStatus)
-        }
-    }
-}
-
-struct BrowserApp: Sendable {
-    let bundleIdentifier: String?
-    let localizedName: String?
-
-    init(_ app: NSRunningApplication?) {
-        bundleIdentifier = app?.bundleIdentifier
-        localizedName = app?.localizedName
-    }
-
-    var displayName: String? {
-        localizedName ?? bundleIdentifier
-    }
-}
-
-private struct BrowserAutomation: Sendable {
-    let automationBundleIdentifier: String
-    let script: String
-}
-
-private struct AppleScriptError: LocalizedError {
-    let message: String
-
-    init(_ dictionary: NSDictionary) {
-        message = dictionary[NSAppleScript.errorMessage] as? String ?? "AppleScript failed."
-    }
-
-    var errorDescription: String? { message }
-}
-
-private struct AppleEventPermissionError: LocalizedError {
-    let status: OSStatus
-
-    var errorDescription: String? {
-        switch status {
-        case OSStatus(errAEEventNotPermitted):
-            "Automation permission was denied."
-        case OSStatus(errAEEventWouldRequireUserConsent):
-            "Automation permission requires user consent."
-        case OSStatus(procNotFound):
-            "The browser is not running."
-        default:
-            "Automation permission failed: \(status)."
-        }
     }
 }

@@ -40,8 +40,14 @@ struct ContentView: View {
         }
         .background(WindowChrome())
         .frame(minWidth: 1120, minHeight: 680)
-        .onAppear(perform: publishBookmarkSelection)
+        .onAppear {
+            publishBookmarkSelection()
+            drainQueuedImports()
+        }
         .onChange(of: library.selectedID) { _, _ in publishBookmarkSelection() }
+        .onReceive(NotificationCenter.default.publisher(for: .clawliciousQueuedImportBookmark)) { _ in
+            drainQueuedImports()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .clawliciousDeleteBookmark)) { _ in
             bookmarkPendingDeletion = library.selectedBookmark
         }
@@ -102,6 +108,12 @@ struct ContentView: View {
 
     private func publishBookmarkSelection() {
         NotificationCenter.default.post(name: .clawliciousBookmarkSelectionChanged, object: library.selectedBookmark?.id)
+    }
+
+    private func drainQueuedImports() {
+        for urlString in ImportURLQueue.shared.drain() {
+            library.addBookmark(urlString)
+        }
     }
 }
 
