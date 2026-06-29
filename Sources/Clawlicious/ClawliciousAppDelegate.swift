@@ -84,6 +84,7 @@ final class ClawliciousAppDelegate: NSObject, NSApplicationDelegate {
         addMenu(editMenu(), named: "Edit", to: main)
 
         let window = NSMenu()
+        window.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         window.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         window.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
         window.addItem(.separator())
