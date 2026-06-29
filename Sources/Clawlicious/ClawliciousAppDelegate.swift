@@ -68,8 +68,9 @@ final class ClawliciousAppDelegate: NSObject, NSApplicationDelegate {
         let bookmark = NSMenu()
         let new = bookmark.addItem(withTitle: "New Bookmark", action: #selector(MenuTarget.newBookmark(_:)), keyEquivalent: "n")
         new.target = menuTarget
-        let bookmarkBrowserPage = bookmark.addItem(withTitle: "Bookmark Current Browser Page", action: #selector(MenuTarget.bookmarkCurrentBrowserPage(_:)), keyEquivalent: "")
+        let bookmarkBrowserPage = bookmark.addItem(withTitle: "Bookmark Current Browser Page", action: #selector(MenuTarget.bookmarkCurrentBrowserPage(_:)), keyEquivalent: "b")
         bookmarkBrowserPage.target = menuTarget
+        bookmarkBrowserPage.keyEquivalentModifierMask = [.command, .control, .option]
         let copyBookmarklet = bookmark.addItem(withTitle: "Copy Browser Bookmarklet", action: #selector(MenuTarget.copyBrowserBookmarklet(_:)), keyEquivalent: "")
         copyBookmarklet.target = menuTarget
         bookmark.addItem(.separator())
