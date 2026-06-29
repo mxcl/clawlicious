@@ -51,6 +51,10 @@ final class ClawliciousAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        true
+    }
+
     private func installMainMenu() {
         let main = NSMenu()
 
