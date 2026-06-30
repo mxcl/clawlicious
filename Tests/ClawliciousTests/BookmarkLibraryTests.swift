@@ -57,6 +57,24 @@ final class BookmarkLibraryTests: XCTestCase {
         XCTAssertEqual(try store.load(), [])
     }
 
+    func testBookmarkStoreRepairsDuplicateIDs() throws {
+        let url = try temporaryDirectory().appending(path: "bookmarks.json")
+        let id = UUID()
+        var first = testBookmark(title: "First", url: "https://example.com/first")
+        first.id = id
+        var second = testBookmark(title: "Second", url: "https://example.com/second")
+        second.id = id
+        try JSONEncoder.clawlicious.encode([first, second]).write(to: url)
+        let store = BookmarkStore.at({ url })
+
+        let bookmarks = try store.load()
+        let saved = try JSONDecoder.clawlicious.decode([Bookmark].self, from: Data(contentsOf: url))
+
+        XCTAssertEqual(Set(bookmarks.map(\.id)).count, 2)
+        XCTAssertEqual(bookmarks.map(\.title), ["First", "Second"])
+        XCTAssertEqual(saved.map(\.id), bookmarks.map(\.id))
+    }
+
     func testLegacyStorageMigratesIntoClawliciousRoot() throws {
         let oldDirectory = try temporaryDirectory()
         let newDirectory = try temporaryDirectory()

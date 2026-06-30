@@ -18,7 +18,11 @@ struct BookmarkStore: Sendable {
                     return bookmarks
                 }
                 let data = try Data(contentsOf: url)
-                return try JSONDecoder.clawlicious.decode([Bookmark].self, from: data)
+                var bookmarks = try JSONDecoder.clawlicious.decode([Bookmark].self, from: data)
+                if repairDuplicateIDs(&bookmarks) {
+                    try persist(bookmarks, to: url)
+                }
+                return bookmarks
             },
             save: { bookmarks in
                 try persist(bookmarks, to: storageURL())
@@ -89,6 +93,18 @@ private func persist(_ bookmarks: [Bookmark], to url: URL) throws {
     )
     let data = try JSONEncoder.clawlicious.encode(bookmarks)
     try data.write(to: url, options: [.atomic])
+}
+
+private func repairDuplicateIDs(_ bookmarks: inout [Bookmark]) -> Bool {
+    var ids = Set<Bookmark.ID>()
+    var repaired = false
+
+    for index in bookmarks.indices where !ids.insert(bookmarks[index].id).inserted {
+        bookmarks[index].id = UUID()
+        repaired = true
+    }
+
+    return repaired
 }
 
 private let onboardingBookmarks: [Bookmark] = {
