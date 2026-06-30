@@ -80,9 +80,7 @@ struct BookmarkMarkdownStore: Sendable {
 }
 
 private func markdownDirectory() throws -> URL {
-    try clawliciousApplicationSupportURL()
-        .appending(path: "Agent", directoryHint: .isDirectory)
-        .appending(path: "links", directoryHint: .isDirectory)
+    try clawliciousStorageURL()
 }
 
 private func fileURL(for id: Bookmark.ID, in directory: URL) -> URL {

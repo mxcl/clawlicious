@@ -4,7 +4,7 @@ struct BookmarkStore: Sendable {
     var load: @Sendable () throws -> [Bookmark]
     var save: @Sendable ([Bookmark]) throws -> Void
 
-    static let live = at({ try storageURL() }, seedOnMissing: true)
+    static let live = at({ try bookmarksURL() }, seedOnMissing: true)
 
     static func at(_ storageURL: @escaping @Sendable () throws -> URL, seedOnMissing: Bool = false) -> BookmarkStore {
         BookmarkStore(
@@ -27,18 +27,59 @@ struct BookmarkStore: Sendable {
     }
 }
 
-func clawliciousApplicationSupportURL() throws -> URL {
+func clawliciousStorageURL() throws -> URL {
     let base = try FileManager.default.url(
-        for: .applicationSupportDirectory,
+        for: .documentDirectory,
         in: .userDomainMask,
         appropriateFor: nil,
         create: true
     )
+    let url = base.appending(path: "Clawlicious", directoryHint: .isDirectory)
+    try migrateLegacyStorage(to: url)
+    return url
+}
+
+private func bookmarksURL() throws -> URL {
+    try clawliciousStorageURL().appending(path: "bookmarks.json")
+}
+
+func migrateLegacyStorage(to newDirectory: URL) throws {
+    guard let oldDirectory = try? legacyApplicationSupportURL() else { return }
+    try migrateLegacyStorage(from: oldDirectory, to: newDirectory)
+}
+
+func migrateLegacyStorage(from oldDirectory: URL, to newDirectory: URL) throws {
+    guard FileManager.default.fileExists(atPath: oldDirectory.path) else { return }
+    try FileManager.default.createDirectory(at: newDirectory, withIntermediateDirectories: true)
+
+    try copyIfMissing(oldDirectory.appending(path: "bookmarks.json"), to: newDirectory.appending(path: "bookmarks.json"))
+
+    let oldLinks = oldDirectory
+        .appending(path: "Agent", directoryHint: .isDirectory)
+        .appending(path: "links", directoryHint: .isDirectory)
+    if let files = try? FileManager.default.contentsOfDirectory(at: oldLinks, includingPropertiesForKeys: nil) {
+        for file in files {
+            try copyIfMissing(file, to: newDirectory.appending(path: file.lastPathComponent))
+        }
+    }
+}
+
+private func legacyApplicationSupportURL() throws -> URL {
+    let base = try FileManager.default.url(
+        for: .applicationSupportDirectory,
+        in: .userDomainMask,
+        appropriateFor: nil,
+        create: false
+    )
     return base.appending(path: "Clawlicious", directoryHint: .isDirectory)
 }
 
-private func storageURL() throws -> URL {
-    try clawliciousApplicationSupportURL().appending(path: "bookmarks.json")
+private func copyIfMissing(_ source: URL, to destination: URL) throws {
+    guard FileManager.default.fileExists(atPath: source.path),
+          !FileManager.default.fileExists(atPath: destination.path) else {
+        return
+    }
+    try FileManager.default.copyItem(at: source, to: destination)
 }
 
 private func persist(_ bookmarks: [Bookmark], to url: URL) throws {

@@ -44,7 +44,7 @@ final class BrowserBookmarkletServer: @unchecked Sendable {
     }
 
     private var agentMarkdownPath: String {
-        (try? BookmarkMarkdownStore.live.directory().path(percentEncoded: false)) ?? "~/Library/Application Support/Clawlicious/Agent/links"
+        (try? BookmarkMarkdownStore.live.directory().path(percentEncoded: false)) ?? "~/Documents/Clawlicious"
     }
 
     func start() {

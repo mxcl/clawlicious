@@ -57,6 +57,29 @@ final class BookmarkLibraryTests: XCTestCase {
         XCTAssertEqual(try store.load(), [])
     }
 
+    func testLegacyStorageMigratesIntoClawliciousRoot() throws {
+        let oldDirectory = try temporaryDirectory()
+        let newDirectory = try temporaryDirectory()
+        let oldLinks = oldDirectory
+            .appending(path: "Agent", directoryHint: .isDirectory)
+            .appending(path: "links", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: oldLinks, withIntermediateDirectories: true)
+        let bookmark = testBookmark(title: "Swift Notes", url: "https://example.com/swift")
+        try JSONEncoder.clawlicious.encode([bookmark])
+            .write(to: oldDirectory.appending(path: "bookmarks.json"))
+        try "# Markdown".write(
+            to: oldLinks.appending(path: "\(bookmark.id.uuidString).md"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        try migrateLegacyStorage(from: oldDirectory, to: newDirectory)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: newDirectory.appending(path: "bookmarks.json").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: newDirectory.appending(path: "\(bookmark.id.uuidString).md").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: newDirectory.appending(path: "Agent").path))
+    }
+
     @MainActor
     func testLocalSearchDoesNotInvokeSummarizer() {
         let bookmark = Bookmark(
@@ -504,6 +527,7 @@ final class BookmarkLibraryTests: XCTestCase {
 
     @MainActor
     func testAddingExistingFailedBookmarkRetriesSummary() async throws {
+        let directory = try temporaryDirectory()
         let bookmark = Bookmark(
             id: UUID(),
             url: URL(string: "https://example.com/swift")!,
@@ -522,7 +546,8 @@ final class BookmarkLibraryTests: XCTestCase {
                 load: { [bookmark] },
                 save: { _ in }
             ),
-            summarizer: SuccessfulSummarizer()
+            summarizer: SuccessfulSummarizer(),
+            markdownStore: .at { directory }
         )
 
         library.addBookmark(bookmark.url)
@@ -538,13 +563,15 @@ final class BookmarkLibraryTests: XCTestCase {
 
     @MainActor
     func testRetryingSummarizedBookmarkWaitsForBrowserSnapshot() async throws {
+        let directory = try temporaryDirectory()
         let bookmark = testBookmark(title: "Old", url: "https://example.com/old")
         let library = BookmarkLibrary(
             store: BookmarkStore(
                 load: { [bookmark] },
                 save: { _ in }
             ),
-            summarizer: SuccessfulSummarizer()
+            summarizer: SuccessfulSummarizer(),
+            markdownStore: .at { directory }
         )
 
         library.retryBookmark(bookmark)
@@ -560,13 +587,15 @@ final class BookmarkLibraryTests: XCTestCase {
 
     @MainActor
     func testResummarizingBookmarkUsesProvidedBrowserSnapshot() async throws {
+        let directory = try temporaryDirectory()
         let bookmark = testBookmark(title: "Old", url: "https://example.com/old")
         let library = BookmarkLibrary(
             store: BookmarkStore(
                 load: { [bookmark] },
                 save: { _ in }
             ),
-            summarizer: SnapshotTitleSummarizer()
+            summarizer: SnapshotTitleSummarizer(),
+            markdownStore: .at { directory }
         )
 
         library.resummarizeBookmark(bookmark, page: PageSnapshot(title: "Fresh Browser", description: "", markdown: "# Fresh Browser"))
@@ -579,13 +608,15 @@ final class BookmarkLibraryTests: XCTestCase {
 
     @MainActor
     func testSummaryContentWarningIsSaved() async throws {
+        let directory = try temporaryDirectory()
         let saved = SavedBookmarks()
         let library = BookmarkLibrary(
             store: BookmarkStore(
                 load: { [] },
                 save: { saved.value = $0 }
             ),
-            summarizer: WarningSummarizer()
+            summarizer: WarningSummarizer(),
+            markdownStore: .at { directory }
         )
 
         library.addBookmark(URL(string: "https://example.com/paywalled")!)
@@ -600,6 +631,7 @@ final class BookmarkLibraryTests: XCTestCase {
 
     @MainActor
     func testCategoriesAreTitleCased() async throws {
+        let directory = try temporaryDirectory()
         var bookmark = testBookmark(title: "Old", url: "https://example.com/old")
         bookmark.category = "developer tools"
         let savedBookmark = bookmark
@@ -608,7 +640,8 @@ final class BookmarkLibraryTests: XCTestCase {
                 load: { [savedBookmark] },
                 save: { _ in }
             ),
-            summarizer: LowercaseCategorySummarizer()
+            summarizer: LowercaseCategorySummarizer(),
+            markdownStore: .at { directory }
         )
 
         XCTAssertEqual(library.categories, ["Developer Tools"])
@@ -623,6 +656,7 @@ final class BookmarkLibraryTests: XCTestCase {
 
     @MainActor
     func testTagsAreKebabCased() async throws {
+        let directory = try temporaryDirectory()
         var bookmark = testBookmark(title: "Old", url: "https://example.com/old")
         bookmark.tags = ["Swift UI", "swift_ui", "macOS!", ""]
         let savedBookmark = bookmark
@@ -631,7 +665,8 @@ final class BookmarkLibraryTests: XCTestCase {
                 load: { [savedBookmark] },
                 save: { _ in }
             ),
-            summarizer: MixedCaseTagSummarizer()
+            summarizer: MixedCaseTagSummarizer(),
+            markdownStore: .at { directory }
         )
 
         XCTAssertEqual(library.tags, ["macos", "swift-ui"])
@@ -646,6 +681,7 @@ final class BookmarkLibraryTests: XCTestCase {
 
     @MainActor
     func testSummarizerReceivesCurrentCategoriesAndTags() async throws {
+        let directory = try temporaryDirectory()
         var design = testBookmark(title: "Design", url: "https://example.com/design")
         design.category = "Design"
         design.tags = ["design", "swift"]
@@ -659,7 +695,8 @@ final class BookmarkLibraryTests: XCTestCase {
                 load: { savedBookmarks },
                 save: { _ in }
             ),
-            summarizer: summarizer
+            summarizer: summarizer,
+            markdownStore: .at { directory }
         )
 
         library.retryBookmark(design)
