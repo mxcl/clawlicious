@@ -111,8 +111,8 @@ struct ContentView: View {
     }
 
     private func drainQueuedImports() {
-        for urlString in ImportURLQueue.shared.drain() {
-            library.addBookmark(urlString)
+        for request in ImportURLQueue.shared.drain() {
+            library.addBookmark(request.urlString, notifyOnCompletion: request.notifyOnCompletion)
         }
     }
 }

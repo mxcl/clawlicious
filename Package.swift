@@ -26,7 +26,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "ClawliciousMenuBarHelper",
-            dependencies: ["ClawliciousBrowser"],
+            dependencies: ["ClawliciousBrowser", "ClawliciousCore"],
             exclude: ["Info.plist"],
             linkerSettings: [
                 .unsafeFlags([

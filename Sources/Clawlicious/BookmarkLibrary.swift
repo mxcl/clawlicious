@@ -13,6 +13,7 @@ final class BookmarkLibrary: ObservableObject {
     private let store: BookmarkStore
     private let summarizer: BookmarkSummarizing
     private let markdownStore: BookmarkMarkdownStore
+    private var completionNotificationIDs = Set<Bookmark.ID>()
 
     init(
         store: BookmarkStore = .live,
@@ -77,23 +78,29 @@ final class BookmarkLibrary: ObservableObject {
     }
 
     @discardableResult
-    func addBookmark(_ rawValue: String) -> Bool {
+    func addBookmark(_ rawValue: String, notifyOnCompletion: Bool = false) -> Bool {
         let raw = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = normalizedURL(raw) else {
             statusLine = "Enter a valid URL."
             return false
         }
-        addBookmark(url)
+        addBookmark(url, notifyOnCompletion: notifyOnCompletion)
         return true
     }
 
-    func addBookmark(_ url: URL) {
+    func addBookmark(_ url: URL, notifyOnCompletion: Bool = false) {
         if let existing = bookmarks.first(where: { $0.url == url }) {
             selectedID = existing.id
             if existing.status == .failed {
+                if notifyOnCompletion {
+                    completionNotificationIDs.insert(existing.id)
+                }
                 retryBookmark(existing)
             } else {
                 statusLine = "Bookmark already saved."
+                if notifyOnCompletion {
+                    ClawliciousStatusNotification.post(statusLine)
+                }
             }
             return
         }
@@ -115,6 +122,9 @@ final class BookmarkLibrary: ObservableObject {
         )
         bookmarks.insert(bookmark, at: 0)
         selectedID = bookmark.id
+        if notifyOnCompletion {
+            completionNotificationIDs.insert(bookmark.id)
+        }
         save()
         statusLine = "Loading \(url.bookmarkDomain) in browser..."
     }
@@ -261,6 +271,7 @@ final class BookmarkLibrary: ObservableObject {
             } else {
                 statusLine = "Saved metadata for \(url.bookmarkDomain)."
             }
+            postCompletionNotificationIfNeeded(id)
         } catch {
             update(id) { bookmark in
                 bookmark.status = .failed
@@ -270,8 +281,14 @@ final class BookmarkLibrary: ObservableObject {
                 bookmark.updatedAt = Date()
             }
             statusLine = error.localizedDescription
+            postCompletionNotificationIfNeeded(id)
         }
         save()
+    }
+
+    private func postCompletionNotificationIfNeeded(_ id: Bookmark.ID) {
+        guard completionNotificationIDs.remove(id) != nil else { return }
+        ClawliciousStatusNotification.post(statusLine)
     }
 
     private func saveMarkdown(_ bookmark: Bookmark, markdown: String) -> String? {

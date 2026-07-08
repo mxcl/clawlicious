@@ -1,5 +1,6 @@
 import AppKit
 import ClawliciousBrowser
+import ClawliciousCore
 
 extension Notification.Name {
     static let clawliciousNewBookmark = Notification.Name("ClawliciousNewBookmark")
@@ -24,7 +25,6 @@ final class ClawliciousAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         DispatchQueue.main.async { [weak self] in
             self?.installMainMenu()
-            NSApp.activate(ignoringOtherApps: true)
         }
         MenuBarHelperLauncher.launchIfNeeded()
         BrowserBookmarkletServer.shared.start()
@@ -47,7 +47,16 @@ final class ClawliciousAppDelegate: NSObject, NSApplicationDelegate {
                   !urlString.isEmpty else {
                 continue
             }
-            ImportURLQueue.shared.enqueue(urlString)
+            let background = components.queryItems?.contains { $0.name == "background" && $0.value == "1" } == true
+            let notify = components.queryItems?.contains { $0.name == "notify" && $0.value == "1" } == true
+            let wasRunning = components.queryItems?.contains { $0.name == "wasRunning" && $0.value == "1" } == true
+            ImportURLQueue.shared.enqueue(urlString, notifyOnCompletion: notify)
+            if background, !wasRunning {
+                NSApp.hide(nil)
+                DispatchQueue.main.async {
+                    NSApp.hide(nil)
+                }
+            }
         }
     }
 

@@ -2,19 +2,24 @@ import Foundation
 
 @MainActor
 final class ImportURLQueue {
+    struct Request {
+        var urlString: String
+        var notifyOnCompletion: Bool
+    }
+
     static let shared = ImportURLQueue()
 
-    private var urlStrings: [String] = []
+    private var requests: [Request] = []
 
     private init() {}
 
-    func enqueue(_ urlString: String) {
-        urlStrings.append(urlString)
+    func enqueue(_ urlString: String, notifyOnCompletion: Bool = false) {
+        requests.append(Request(urlString: urlString, notifyOnCompletion: notifyOnCompletion))
         NotificationCenter.default.post(name: .clawliciousQueuedImportBookmark, object: nil)
     }
 
-    func drain() -> [String] {
-        defer { urlStrings.removeAll() }
-        return urlStrings
+    func drain() -> [Request] {
+        defer { requests.removeAll() }
+        return requests
     }
 }

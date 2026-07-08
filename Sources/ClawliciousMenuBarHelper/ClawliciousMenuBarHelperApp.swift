@@ -1,6 +1,7 @@
 import AppKit
 import Carbon.HIToolbox
 import ClawliciousBrowser
+import ClawliciousCore
 import ServiceManagement
 import SwiftUI
 
@@ -19,8 +20,8 @@ struct ClawliciousMenuBarHelperApp: App {
 }
 
 private struct HelperMenuView: View {
+    @StateObject private var helperStatus = HelperStatus.shared
     @State private var startsAtLogin = SMAppService.mainApp.status == .enabled
-    @State private var status: String?
 
     var body: some View {
         Group {
@@ -39,7 +40,7 @@ private struct HelperMenuView: View {
                 setStartsAtLogin(enabled)
             })
 
-            if let status {
+            if let status = helperStatus.message {
                 Divider()
                 Text(status)
             }
@@ -53,7 +54,7 @@ private struct HelperMenuView: View {
     }
 
     private func bookmarkCurrentBrowserPage() async {
-        status = await HelperActions.bookmarkCurrentBrowserPage()
+        helperStatus.show(await HelperActions.bookmarkCurrentBrowserPage())
     }
 
     private func setStartsAtLogin(_ enabled: Bool) {
@@ -64,18 +65,105 @@ private struct HelperMenuView: View {
                 try SMAppService.mainApp.unregister()
             }
             startsAtLogin = enabled
-            status = nil
+            helperStatus.show(nil)
         } catch {
             startsAtLogin = SMAppService.mainApp.status == .enabled
-            status = error.localizedDescription
+            helperStatus.show(error.localizedDescription)
         }
     }
 
-    private func openMainApp(importing urlString: String? = nil) {
-        guard HelperActions.openMainApp(importing: urlString) else {
-            status = "Could not open Clawlicious."
+    private func openMainApp() {
+        guard HelperActions.openMainApp() else {
+            helperStatus.show("Could not open Clawlicious.")
             return
         }
+    }
+}
+
+@MainActor
+private final class HelperStatus: ObservableObject {
+    static let shared = HelperStatus()
+
+    @Published private(set) var message: String?
+
+    private var observer: NSObjectProtocol?
+    private var panel: NSPanel?
+    private var hideTask: Task<Void, Never>?
+
+    private init() {
+        observer = DistributedNotificationCenter.default().addObserver(
+            forName: ClawliciousStatusNotification.name,
+            object: nil,
+            queue: .main
+        ) { notification in
+            guard let message = notification.userInfo?[ClawliciousStatusNotification.messageKey] as? String else { return }
+            Task { @MainActor in
+                self.show(message)
+            }
+        }
+    }
+
+    func show(_ message: String?) {
+        self.message = message
+        guard let message else {
+            panel?.close()
+            return
+        }
+        showPanel(message)
+    }
+
+    private func showPanel(_ message: String) {
+        hideTask?.cancel()
+
+        let controller = NSHostingController(rootView: HelperStatusToast(message: message))
+        let size = controller.sizeThatFits(in: NSSize(width: 340, height: 120))
+        let screen = NSScreen.main ?? NSScreen.screens.first
+        let screenFrame = screen?.frame ?? .zero
+        let frame = NSRect(
+            x: screenFrame.maxX - size.width - 14,
+            y: screenFrame.maxY - size.height - 32,
+            width: size.width,
+            height: size.height
+        )
+
+        let panel = panel ?? NSPanel(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        panel.contentViewController = controller
+        panel.setFrame(frame, display: true)
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.ignoresMouseEvents = true
+        panel.isOpaque = false
+        panel.level = .statusBar
+        panel.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
+        panel.orderFrontRegardless()
+        self.panel = panel
+
+        hideTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            await MainActor.run { self?.panel?.close() }
+        }
+    }
+}
+
+private struct HelperStatusToast: View {
+    var message: String
+
+    var body: some View {
+        Text(message)
+            .font(.caption)
+            .foregroundStyle(.primary)
+            .lineLimit(3)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .frame(maxWidth: 340, alignment: .leading)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(.quaternary)
+            }
+            .padding(1)
     }
 }
 
@@ -119,7 +207,7 @@ final class HelperDelegate: NSObject, NSApplicationDelegate {
             }
 
             Task { @MainActor in
-                _ = await HelperActions.bookmarkCurrentBrowserPage()
+                HelperStatus.shared.show(await HelperActions.bookmarkCurrentBrowserPage())
             }
             return noErr
         }, 1, &eventType, nil, &hotKeyHandler)
@@ -142,19 +230,49 @@ private enum HelperActions {
             guard let urlString = try await CurrentBrowserURLReader.urlString(from: app) else {
                 return "No supported browser URL found."
             }
-            return openMainApp(importing: urlString) ? "Sent page to Clawlicious." : "Could not open Clawlicious."
+            return await importInBackground(urlString) ? "Added bookmark. Summarizing..." : "Could not open Clawlicious."
         } catch {
             return error.localizedDescription
         }
     }
 
-    static func openMainApp(importing urlString: String? = nil) -> Bool {
-        guard var components = URLComponents(string: "clawlicious://open") else { return false }
-        if let urlString {
-            components.host = "import"
-            components.queryItems = [URLQueryItem(name: "url", value: urlString)]
-        }
-        guard let url = components.url else { return false }
+    static func openMainApp() -> Bool {
+        guard let url = URL(string: "clawlicious://open") else { return false }
         return NSWorkspace.shared.open(url)
+    }
+
+    static func importInBackground(_ urlString: String) async -> Bool {
+        guard var components = URLComponents(string: "clawlicious://open") else { return false }
+        let wasRunning = !NSRunningApplication.runningApplications(withBundleIdentifier: "dev.mxcl.clawlicious").isEmpty
+        components.host = "import"
+        components.queryItems = [
+            URLQueryItem(name: "url", value: urlString),
+            URLQueryItem(name: "background", value: "1"),
+            URLQueryItem(name: "notify", value: "1"),
+            URLQueryItem(name: "wasRunning", value: wasRunning ? "1" : "0")
+        ]
+        guard let url = components.url else { return false }
+        guard let appURL = mainAppURL else {
+            return NSWorkspace.shared.open(url)
+        }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = false
+        return await withCheckedContinuation { continuation in
+            NSWorkspace.shared.open([url], withApplicationAt: appURL, configuration: configuration) { _, error in
+                continuation.resume(returning: error == nil)
+            }
+        }
+    }
+
+    private static var mainAppURL: URL? {
+        let bundledAppURL = Bundle.main.bundleURL
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        if bundledAppURL.pathExtension == "app" {
+            return bundledAppURL
+        }
+        return NSWorkspace.shared.urlForApplication(withBundleIdentifier: "dev.mxcl.clawlicious")
     }
 }
