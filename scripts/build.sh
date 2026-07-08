@@ -1,9 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+install=0
+run=0
+
+for arg in "$@"; do
+  case "$arg" in
+    --install) install=1 ;;
+    --run) run=1 ;;
+    -h|--help)
+      echo "usage: scripts/build.sh [--install] [--run]"
+      exit 0
+      ;;
+    *)
+      echo "unknown option: $arg" >&2
+      echo "usage: scripts/build.sh [--install] [--run]" >&2
+      exit 2
+      ;;
+  esac
+done
+
 swift build
 bin_dir="$(swift build --show-bin-path)"
 app="$bin_dir/Clawlicious.app"
+installed_app="/Applications/Clawlicious.app"
 helper="$app/Contents/Library/LoginItems/ClawliciousMenuBarHelper.app"
 
 osascript -e 'tell application id "dev.mxcl.clawlicious" to quit' >/dev/null 2>&1 || true
@@ -32,4 +52,16 @@ xattr -cr "$app"
 codesign --force --sign - "$helper" >/dev/null
 xattr -cr "$app"
 codesign --force --deep --sign - "$app" >/dev/null
-open -n "$app"
+
+if (( install )); then
+  rm -rf "$installed_app"
+  cp -R "$app" "$installed_app"
+fi
+
+if (( run )); then
+  if (( install )); then
+    open -n "$installed_app"
+  else
+    open -n "$app"
+  fi
+fi
