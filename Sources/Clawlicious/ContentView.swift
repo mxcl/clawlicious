@@ -231,7 +231,7 @@ private struct BookmarkListView: View {
                 .background(LiquidGlassSurface(material: .bar, tint: .clear))
                 .overlay(alignment: .top) { Divider() }
         }
-        .background(LiquidGlassSurface(material: .thinMaterial, tint: .clear))
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 }
 
