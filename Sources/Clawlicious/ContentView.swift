@@ -47,7 +47,16 @@ struct ContentView: View {
                             .disabled(!browser.canGoForward)
                             .help("Forward")
                         }
-                        ToolbarSpacer(.fixed)
+                        ToolbarSpacer()
+                        ToolbarItem {
+                            Text(browser.address.isEmpty ? "Website" : browser.address)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .textSelection(.enabled)
+                                .frame(minWidth: 220, maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 12)
+                        }
+                        ToolbarSpacer()
                         ToolbarItem {
                             Button {
                                 browser.isLoading ? browser.stopLoading() : browser.reload()
@@ -75,17 +84,6 @@ struct ContentView: View {
                                 .labelStyle(.iconOnly)
                             }
                             .help(browser.contentMode == .html ? "Show extracted Markdown" : "Show webpage")
-                        }
-                        ToolbarSpacer(.fixed)
-                        ToolbarItem {
-                            Text(browser.address.isEmpty ? "Website" : browser.address)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                                .textSelection(.enabled)
-                                .frame(minWidth: 220, maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .background(.quaternary, in: RoundedRectangle(cornerRadius: 5))
                         }
                     }
                 }
