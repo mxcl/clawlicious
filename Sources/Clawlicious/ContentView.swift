@@ -5,8 +5,6 @@ struct ContentView: View {
     @StateObject private var library = BookmarkLibrary()
     @StateObject private var browser = BrowserModel()
     @State private var bookmarkPendingDeletion: Bookmark?
-    @State private var bookmarkColumnWidth: CGFloat = 430
-    @State private var detailColumnWidth: CGFloat = 620
     @FocusState private var isAddingBookmark: Bool
 
     var body: some View {
@@ -15,24 +13,21 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 210, ideal: 240, max: 290)
         } content: {
             BookmarkListView(library: library)
-                .background(ColumnWidthReporter(width: $bookmarkColumnWidth))
                 .navigationSplitViewColumnWidth(min: 360, ideal: 430, max: 540)
+                .toolbar {
+                    ToolbarItem {
+                        AddBookmarkField(library: library, isFocused: $isAddingBookmark)
+                    }
+                }
         } detail: {
             DetailWebView(library: library, bookmark: library.selectedBookmark, browser: browser)
-                .background(ColumnWidthReporter(width: $detailColumnWidth))
-        }
-        .background {
-            GeometryReader { proxy in
-                TitlebarControls(
-                    library: library,
-                    browser: browser,
-                    isAddingBookmark: $isAddingBookmark,
-                    hasBookmark: library.selectedBookmark != nil,
-                    totalWidth: proxy.size.width,
-                    bookmarkColumnWidth: bookmarkColumnWidth,
-                    detailColumnWidth: detailColumnWidth
-                )
-            }
+                .toolbar {
+                    ToolbarItem {
+                        if library.selectedBookmark != nil {
+                            BrowserControls(browser: browser)
+                        }
+                    }
+                }
         }
         .background {
             LiquidGlassSurface(material: .regularMaterial, tint: .clear)
@@ -441,180 +436,6 @@ private struct DetailWebView: View {
                 browser.reload()
             }
         }
-    }
-}
-
-private struct ColumnWidthReporter: View {
-    @Binding var width: CGFloat
-
-    var body: some View {
-        GeometryReader { proxy in
-            Color.clear
-                .onAppear { width = proxy.size.width }
-                .onChange(of: proxy.size.width) { _, newWidth in width = newWidth }
-        }
-    }
-}
-
-private struct TitlebarControls: NSViewRepresentable {
-    @ObservedObject var library: BookmarkLibrary
-    @ObservedObject var browser: BrowserModel
-    var isAddingBookmark: FocusState<Bool>.Binding
-    var hasBookmark: Bool
-    var totalWidth: CGFloat
-    var bookmarkColumnWidth: CGFloat
-    var detailColumnWidth: CGFloat
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    func makeNSView(context: Context) -> NSView {
-        NSView(frame: .zero)
-    }
-
-    func updateNSView(_ view: NSView, context: Context) {
-        DispatchQueue.main.async {
-            context.coordinator.update(
-                window: view.window,
-                library: library,
-                browser: browser,
-                isAddingBookmark: isAddingBookmark,
-                hasBookmark: hasBookmark,
-                totalWidth: totalWidth,
-                bookmarkColumnWidth: bookmarkColumnWidth,
-                detailColumnWidth: detailColumnWidth
-            )
-        }
-    }
-
-    static func dismantleNSView(_ view: NSView, coordinator: Coordinator) {
-        coordinator.removeAccessory()
-    }
-
-    @MainActor
-    final class Coordinator {
-        private weak var window: NSWindow?
-        private var controller: NSTitlebarAccessoryViewController?
-        private var hostingView: PassthroughHostingView<TitlebarControlsContent>?
-
-        func update(
-            window newWindow: NSWindow?,
-            library: BookmarkLibrary,
-            browser: BrowserModel,
-            isAddingBookmark: FocusState<Bool>.Binding,
-            hasBookmark: Bool,
-            totalWidth: CGFloat,
-            bookmarkColumnWidth: CGFloat,
-            detailColumnWidth: CGFloat
-        ) {
-            guard let newWindow else {
-                removeAccessory()
-                return
-            }
-
-            if window !== newWindow {
-                removeAccessory()
-                window = newWindow
-            }
-
-            let width = max(0, totalWidth)
-            let rootView = TitlebarControlsContent(
-                library: library,
-                browser: browser,
-                isAddingBookmark: isAddingBookmark,
-                hasBookmark: hasBookmark,
-                totalWidth: width,
-                bookmarkColumnWidth: bookmarkColumnWidth,
-                detailColumnWidth: detailColumnWidth
-            )
-
-            if let hostingView {
-                hostingView.rootView = rootView
-                hostingView.frame.size = NSSize(width: width, height: Self.height)
-            } else {
-                let hostingView = PassthroughHostingView(rootView: rootView)
-                hostingView.frame = NSRect(x: 0, y: 0, width: width, height: Self.height)
-                self.hostingView = hostingView
-
-                let controller = NSTitlebarAccessoryViewController()
-                controller.layoutAttribute = .right
-                controller.view = hostingView
-                self.controller = controller
-                newWindow.addTitlebarAccessoryViewController(controller)
-            }
-        }
-
-        func removeAccessory() {
-            guard let controller else { return }
-            if let window, let index = window.titlebarAccessoryViewControllers.firstIndex(where: { $0 === controller }) {
-                window.removeTitlebarAccessoryViewController(at: index)
-            } else {
-                controller.removeFromParent()
-            }
-            self.controller = nil
-            self.hostingView = nil
-        }
-
-        private static let height: CGFloat = 52
-    }
-}
-
-private final class PassthroughHostingView<Content: View>: NSHostingView<Content> {
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        let hitView = super.hitTest(point)
-        return hitView === self ? nil : hitView
-    }
-}
-
-private struct TitlebarControlsContent: View {
-    @ObservedObject var library: BookmarkLibrary
-    @ObservedObject var browser: BrowserModel
-    var isAddingBookmark: FocusState<Bool>.Binding
-    var hasBookmark: Bool
-    var totalWidth: CGFloat
-    var bookmarkColumnWidth: CGFloat
-    var detailColumnWidth: CGFloat
-
-    var body: some View {
-        HStack(spacing: 0) {
-            Color.clear
-                .frame(width: sidebarWidth)
-                .allowsHitTesting(false)
-
-            ZStack(alignment: .leading) {
-                LiquidGlassSurface(material: .bar, tint: .clear)
-                    .overlay(alignment: .bottom) { Divider() }
-
-                HStack(spacing: 0) {
-                    AddBookmarkField(library: library, isFocused: isAddingBookmark)
-                        .padding(.horizontal, 10)
-                        .frame(width: bookmarkColumnWidth)
-
-                    if hasBookmark {
-                        BrowserControls(browser: browser)
-                            .padding(.leading, 10)
-                            .padding(.trailing, 12)
-                            .frame(width: detailColumnWidth, alignment: .leading)
-                    } else {
-                        Color.clear
-                            .frame(width: detailColumnWidth)
-                            .allowsHitTesting(false)
-                    }
-                }
-            }
-            .frame(width: contentColumnWidth, height: 52)
-        }
-        .frame(width: totalWidth, height: 52, alignment: .leading)
-        .allowsHitTesting(true)
-    }
-
-    private var sidebarWidth: CGFloat {
-        max(0, totalWidth - bookmarkColumnWidth - detailColumnWidth)
-    }
-
-    private var contentColumnWidth: CGFloat {
-        bookmarkColumnWidth + detailColumnWidth
     }
 }
 
