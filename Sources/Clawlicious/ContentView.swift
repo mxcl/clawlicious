@@ -5,7 +5,7 @@ struct ContentView: View {
     @StateObject private var library = BookmarkLibrary()
     @StateObject private var browser = BrowserModel()
     @State private var bookmarkPendingDeletion: Bookmark?
-    @FocusState private var isAddingBookmark: Bool
+    @State private var isAddingBookmark = false
 
     var body: some View {
         NavigationSplitView {
@@ -16,7 +16,7 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 360, ideal: 430, max: 540)
                 .toolbar {
                     ToolbarItem {
-                        AddBookmarkField(library: library, isFocused: $isAddingBookmark)
+                        AddBookmarkButton(library: library, isPresented: $isAddingBookmark)
                     }
                 }
         } detail: {
@@ -156,50 +156,40 @@ private struct SidebarView: View {
     }
 }
 
-private struct AddBookmarkField: View {
+private struct AddBookmarkButton: View {
     @ObservedObject var library: BookmarkLibrary
-    var isFocused: FocusState<Bool>.Binding
+    @Binding var isPresented: Bool
+    @FocusState private var isURLFocused: Bool
 
     var body: some View {
-        HStack(spacing: 8) {
-            TextField("Add bookmark URL", text: $library.newURLString)
-                .textFieldStyle(.roundedBorder)
-                .focused(isFocused)
-                .onSubmit { library.addBookmarkFromField() }
-            Button {
-                library.addBookmarkFromField()
-            } label: {
-                Image(systemName: "plus")
-            }
-            .buttonStyle(.borderless)
-            .help("Add bookmark")
-
-            Button {
-                openCodexAgentPrompt()
-            } label: {
-                Image(systemName: "sparkles")
-            }
-            .buttonStyle(.borderless)
-            .help("Open Codex with agent connection instructions")
-            .accessibilityLabel("Open Codex")
+        Button {
+            isPresented = true
+        } label: {
+            Label("Add Bookmark", systemImage: "plus")
+                .labelStyle(.iconOnly)
         }
-        .controlSize(.small)
+        .help("Add bookmark")
+        .popover(isPresented: $isPresented, arrowEdge: .bottom) {
+            HStack {
+                TextField("Bookmark URL", text: $library.newURLString)
+                    .focused($isURLFocused)
+                    .onSubmit(addBookmark)
+
+                Button("OK", action: addBookmark)
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding()
+            .frame(width: 360)
+            .onAppear {
+                isURLFocused = true
+            }
+        }
     }
 
-    private func openCodexAgentPrompt() {
-        var components = URLComponents()
-        components.scheme = "codex"
-        components.host = "new"
-        components.queryItems = [
-            URLQueryItem(name: "prompt", value: BrowserBookmarkletServer.shared.agentConnectionText)
-        ]
-
-        guard let url = components.url, NSWorkspace.shared.open(url) else {
-            library.statusLine = "Could not open Codex."
-            return
-        }
-
-        library.statusLine = "Opened Codex with agent connection instructions."
+    private func addBookmark() {
+        guard library.addBookmark(library.newURLString) else { return }
+        library.newURLString = ""
+        isPresented = false
     }
 }
 

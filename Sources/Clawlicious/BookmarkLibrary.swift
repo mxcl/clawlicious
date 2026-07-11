@@ -71,12 +71,6 @@ final class BookmarkLibrary: ObservableObject {
         }
     }
 
-    func addBookmarkFromField() {
-        if addBookmark(newURLString) {
-            newURLString = ""
-        }
-    }
-
     @discardableResult
     func addBookmark(_ rawValue: String, notifyOnCompletion: Bool = false) -> Bool {
         let raw = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
