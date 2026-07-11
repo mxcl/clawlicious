@@ -16,6 +16,9 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 360, ideal: 430, max: 540)
                 .toolbar {
                     ToolbarItem {
+                        CodexAgentButton(library: library)
+                    }
+                    ToolbarItem {
                         AddBookmarkButton(library: library, isPresented: $isAddingBookmark)
                     }
                 }
@@ -153,6 +156,34 @@ private struct SidebarView: View {
                 .monospacedDigit()
         }
             .tag(filter)
+    }
+}
+
+private struct CodexAgentButton: View {
+    @ObservedObject var library: BookmarkLibrary
+
+    var body: some View {
+        Button(action: openCodexAgentPrompt) {
+            Label("Open Codex", systemImage: "sparkles")
+                .labelStyle(.iconOnly)
+        }
+        .help("Open Codex with agent connection instructions")
+    }
+
+    private func openCodexAgentPrompt() {
+        var components = URLComponents()
+        components.scheme = "codex"
+        components.host = "new"
+        components.queryItems = [
+            URLQueryItem(name: "prompt", value: BrowserBookmarkletServer.shared.agentConnectionText)
+        ]
+
+        guard let url = components.url, NSWorkspace.shared.open(url) else {
+            library.statusLine = "Could not open Codex."
+            return
+        }
+
+        library.statusLine = "Opened Codex with agent connection instructions."
     }
 }
 
