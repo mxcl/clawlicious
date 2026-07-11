@@ -18,6 +18,7 @@ struct ContentView: View {
                     ToolbarItem {
                         CodexAgentButton(library: library)
                     }
+                    ToolbarSpacer(.fixed)
                     ToolbarItem {
                         AddBookmarkButton(library: library, isPresented: $isAddingBookmark)
                     }
