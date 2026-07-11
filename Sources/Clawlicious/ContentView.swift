@@ -212,25 +212,14 @@ private struct BookmarkListView: View {
     @ObservedObject var library: BookmarkLibrary
 
     var body: some View {
-        VStack(spacing: 0) {
-            List(library.visibleBookmarks, selection: $library.selectedID) { bookmark in
-                BookmarkRow(bookmark: bookmark) {
-                    library.retryBookmark(bookmark)
-                }
-                    .tag(bookmark.id)
+        List(library.visibleBookmarks, selection: $library.selectedID) { bookmark in
+            BookmarkRow(bookmark: bookmark) {
+                library.retryBookmark(bookmark)
             }
-            .listStyle(.inset)
-            .scrollContentBackground(.hidden)
-            Text(library.statusLine.isEmpty ? "\(library.visibleBookmarks.count) bookmarks" : library.statusLine)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(LiquidGlassSurface(material: .bar, tint: .clear))
-                .overlay(alignment: .top) { Divider() }
+                .tag(bookmark.id)
         }
+        .listStyle(.inset)
+        .scrollContentBackground(.hidden)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 }
