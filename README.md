@@ -1,8 +1,8 @@
+![Clawlicious showing a summarized bookmark beside its original page](preview.webp)
+
 # Clawlicious
 
 Your bookmarks, read and filed by Codex.
-
-![Clawlicious showing a summarized bookmark beside its original page](preview.webp)
 
 Clawlicious saves a page, extracts it as Markdown, and asks Codex for a useful
 title, summary, category, and tags. Search the result in a native macOS app or
