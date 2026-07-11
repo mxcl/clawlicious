@@ -26,9 +26,66 @@ struct ContentView: View {
         } detail: {
             DetailWebView(library: library, bookmark: library.selectedBookmark, browser: browser)
                 .toolbar {
-                    ToolbarItem {
-                        if library.selectedBookmark != nil {
-                            BrowserControls(browser: browser)
+                    if library.selectedBookmark != nil {
+                        ToolbarItem {
+                            Button {
+                                browser.goBack()
+                            } label: {
+                                Label("Back", systemImage: "chevron.left")
+                                    .labelStyle(.iconOnly)
+                            }
+                            .disabled(!browser.canGoBack)
+                            .help("Back")
+                        }
+                        ToolbarItem {
+                            Button {
+                                browser.goForward()
+                            } label: {
+                                Label("Forward", systemImage: "chevron.right")
+                                    .labelStyle(.iconOnly)
+                            }
+                            .disabled(!browser.canGoForward)
+                            .help("Forward")
+                        }
+                        ToolbarSpacer(.fixed)
+                        ToolbarItem {
+                            Button {
+                                browser.isLoading ? browser.stopLoading() : browser.reload()
+                            } label: {
+                                Label(
+                                    browser.isLoading ? "Stop" : "Reload",
+                                    systemImage: browser.isLoading ? "xmark" : "arrow.clockwise"
+                                )
+                                .labelStyle(.iconOnly)
+                            }
+                            .help(browser.isLoading ? "Stop" : "Reload")
+                        }
+                        ToolbarItem {
+                            Button {
+                                if browser.contentMode == .html {
+                                    Task { await browser.showMarkdown() }
+                                } else {
+                                    browser.showHTML()
+                                }
+                            } label: {
+                                Label(
+                                    browser.contentMode == .html ? "Show extracted Markdown" : "Show webpage",
+                                    systemImage: browser.contentMode == .html ? "doc.plaintext" : "globe"
+                                )
+                                .labelStyle(.iconOnly)
+                            }
+                            .help(browser.contentMode == .html ? "Show extracted Markdown" : "Show webpage")
+                        }
+                        ToolbarSpacer(.fixed)
+                        ToolbarItem {
+                            Text(browser.address.isEmpty ? "Website" : browser.address)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .textSelection(.enabled)
+                                .frame(minWidth: 220, maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(.quaternary, in: RoundedRectangle(cornerRadius: 5))
                         }
                     }
                 }
@@ -458,59 +515,6 @@ private struct DetailWebView: View {
                 browser.reload()
             }
         }
-    }
-}
-
-private struct BrowserControls: View {
-    @ObservedObject var browser: BrowserModel
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Button {
-                browser.goBack()
-            } label: {
-                Image(systemName: "chevron.left")
-            }
-            .disabled(!browser.canGoBack)
-            .help("Back")
-
-            Button {
-                browser.goForward()
-            } label: {
-                Image(systemName: "chevron.right")
-            }
-            .disabled(!browser.canGoForward)
-            .help("Forward")
-
-            Button {
-                browser.isLoading ? browser.stopLoading() : browser.reload()
-            } label: {
-                Image(systemName: browser.isLoading ? "xmark" : "arrow.clockwise")
-            }
-            .help(browser.isLoading ? "Stop" : "Reload")
-
-            Button {
-                if browser.contentMode == .html {
-                    Task { await browser.showMarkdown() }
-                } else {
-                    browser.showHTML()
-                }
-            } label: {
-                Image(systemName: browser.contentMode == .html ? "doc.plaintext" : "globe")
-            }
-            .help(browser.contentMode == .html ? "Show extracted Markdown" : "Show webpage")
-
-            Text(browser.address.isEmpty ? "Website" : browser.address)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .textSelection(.enabled)
-                .frame(minWidth: 220, maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: 5))
-        }
-        .buttonStyle(.borderless)
-        .controlSize(.small)
     }
 }
 
