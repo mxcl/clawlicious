@@ -288,6 +288,7 @@ private struct BookmarkListView: View {
             BookmarkRow(bookmark: bookmark) {
                 library.retryBookmark(bookmark)
             }
+                .id(bookmark.updatedAt)
                 .tag(bookmark.id)
         }
         .listStyle(.inset)
