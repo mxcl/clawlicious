@@ -4,8 +4,12 @@
 <dict>
     <key>CFBundleIdentifier</key>
     <string>dev.mxcl.clawlicious.menubar</string>
+    <key>CFBundleDisplayName</key>
+    <string>Clawlicious Menu</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleName</key>
-    <string>Clawlicious Menu Bar Helper</string>
+    <string>Clawlicious Menu</string>
     <key>LSUIElement</key>
     <true/>
     <key>NSAppleEventsUsageDescription</key>

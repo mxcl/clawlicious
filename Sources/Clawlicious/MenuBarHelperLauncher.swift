@@ -2,7 +2,7 @@ import AppKit
 
 enum MenuBarHelperLauncher {
     private static let bundleIdentifier = "dev.mxcl.clawlicious.menubar"
-    private static let appName = "ClawliciousMenuBarHelper.app"
+    private static let appName = "Clawlicious Menu.app"
 
     static func launchIfNeeded() {
         guard NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).isEmpty,
