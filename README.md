@@ -9,18 +9,19 @@ title, summary, category, and tags. Search the result in a native macOS app or
 give the archive to your agent.
 
 > [!WARNING]
-> Clawlicious requires macOS 26 and ships from source. It also sends
-> up to 12,000 characters of each saved page to OpenAI for summarization.
+> Clawlicious requires macOS 26. It sends up to 12,000 characters of each
+> saved page to OpenAI for summarization.
 
-## Quickstart
+## Install
 
 ```sh
-$ git clone https://github.com/mxcl/clawlicious
-$ cd clawlicious
-$ scripts/build.sh --run
-Building for debugging...
-Build complete!
+$ brew tap mxcl/made
+$ brew install --cask clawlicious
 ```
+
+Or download `clawlicious-*.dmg` from the
+[latest GitHub release](https://github.com/mxcl/clawlicious/releases/latest),
+open it, and drag Clawlicious to Applications.
 
 Paste a URL into the `+` popover, or put your browser in front and press
 Command-Control-Option-B. Clawlicious loads the page, files it, and keeps the
@@ -51,13 +52,14 @@ in that task.
 > [!NOTE]
 > Search inside Clawlicious is local. Summarizing a new page is not.
 
-## Install it
+## Build from source
 
 You need the Swift 6.2 toolchain in addition to macOS 26.
 
 ```sh
+$ git clone https://github.com/mxcl/clawlicious
+$ cd clawlicious
 $ scripts/build.sh --install --run
-# ^^ builds an ad-hoc-signed app and copies it to /Applications
 ```
 
 The menu bar helper adds the browser shortcut and can start at login. macOS will
