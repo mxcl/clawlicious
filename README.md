@@ -67,8 +67,12 @@ For the build script's remaining options:
 
 ```sh
 $ scripts/build.sh --help
-usage: scripts/build.sh [--install] [--run]
+usage: build.sh [--install] [--run] [--dmg] [--notarize] [--publish]
 ```
+
+`--notarize` signs, packages, notarizes, and staples a DMG. `--publish` also
+creates the corresponding GitHub release and updates `~/src/homebrew-made`.
+The release starts at version 1.0.0; set `MARKETING_VERSION` for later releases.
 
 ## Contributing
 

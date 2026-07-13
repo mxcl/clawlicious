@@ -1,0 +1,14 @@
+cask "clawlicious" do
+  version "@VERSION@"
+  sha256 "@SHA256@"
+
+  url "https://github.com/mxcl/clawlicious/releases/download/v#{version}/clawlicious-#{version}.dmg"
+  name "Clawlicious"
+  desc "Read and file bookmarks with Codex"
+  homepage "https://github.com/mxcl/clawlicious"
+
+  depends_on arch: :arm64
+  depends_on macos: :tahoe
+
+  app "Clawlicious.app"
+end
