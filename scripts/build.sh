@@ -116,6 +116,9 @@ if $dmg; then
   ln -s /Applications "$work/dmg/Applications"
   rm -f "$dmg_path"
   hdiutil create -volname Clawlicious -srcfolder "$work/dmg" -ov -format UDZO "$dmg_path" >/dev/null
+  if [[ "$sign_identity" != "-" ]]; then
+    codesign --force --sign "$sign_identity" --timestamp "$dmg_path"
+  fi
 fi
 
 if $notarize; then
