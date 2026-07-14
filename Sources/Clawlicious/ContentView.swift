@@ -16,6 +16,7 @@ struct ContentView: View {
             BookmarkListView(library: library)
                 .navigationSplitViewColumnWidth(min: 360, ideal: 430, max: 540)
                 .toolbar {
+                    ToolbarSpacer()
                     ToolbarItem {
                         CodexAgentButton(library: library)
                     }
