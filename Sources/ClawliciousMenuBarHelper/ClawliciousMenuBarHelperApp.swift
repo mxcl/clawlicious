@@ -11,9 +11,10 @@ private let hotKeyID = UInt32(1)
 @main
 struct ClawliciousMenuBarHelperApp: App {
     @NSApplicationDelegateAdaptor(HelperDelegate.self) private var delegate
+    @StateObject private var worker = BookmarkImportWorker.shared
 
     var body: some Scene {
-        MenuBarExtra("Clawlicious", systemImage: "bookmark") {
+        MenuBarExtra("Clawlicious", systemImage: worker.isProcessing ? "bookmark.fill" : "bookmark") {
             HelperMenuView()
         }
     }

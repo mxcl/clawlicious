@@ -1,9 +1,10 @@
 import ClawliciousCore
+import Combine
 import Foundation
 import WebKit
 
 @MainActor
-final class BookmarkImportWorker {
+final class BookmarkImportWorker: ObservableObject {
     typealias PageLoader = @MainActor @Sendable (URL) async throws -> PageSnapshot
 
     static let shared = BookmarkImportWorker(pageLoader: HiddenPageLoader().load)
@@ -14,7 +15,7 @@ final class BookmarkImportWorker {
     private let pageLoader: PageLoader
     private let statusHandler: @MainActor @Sendable (String) -> Void
     private var queue: [BookmarkServerCommand] = []
-    private var isProcessing = false
+    @Published private(set) var isProcessing = false
 
     init(
         store: BookmarkStore = .live,
