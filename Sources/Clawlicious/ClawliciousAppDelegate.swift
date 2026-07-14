@@ -27,10 +27,6 @@ final class ClawliciousAppDelegate: NSObject, NSApplicationDelegate {
             self?.installMainMenu()
         }
         MenuBarHelperLauncher.launchIfNeeded()
-        BrowserBookmarkletServer.shared.start()
-        Task {
-            await CodexAppServerSession.shared.warmUpIfNeeded()
-        }
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {

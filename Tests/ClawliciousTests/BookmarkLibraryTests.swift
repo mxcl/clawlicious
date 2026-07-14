@@ -2,6 +2,7 @@ import XCTest
 import WebKit
 @testable import Clawlicious
 @testable import ClawliciousCore
+@testable import ClawliciousMenuBarHelper
 
 final class BookmarkLibraryTests: XCTestCase {
     func testCodexAuthReaderPrefersEnvironmentKey() throws {
@@ -86,6 +87,50 @@ final class BookmarkLibraryTests: XCTestCase {
         try writerB.mutate { $0.append(second) }
 
         XCTAssertEqual(try writerA.load().map(\.id), [first.id, second.id])
+    }
+
+    @MainActor
+    func testImportWorkerSerializesRequests() async throws {
+        let saved = SavedBookmarks()
+        let directory = try temporaryDirectory()
+        let worker = BookmarkImportWorker(
+            store: memoryStore(saved),
+            markdownStore: .at { directory },
+            summarizer: URLTitleSummarizer(),
+            pageLoader: { url in
+                PageSnapshot(title: url.lastPathComponent, description: "", markdown: String(repeating: "Readable page text. ", count: 8))
+            },
+            statusHandler: { _ in }
+        )
+
+        worker.enqueue(.importURL("https://example.com/first"))
+        worker.enqueue(.importURL("https://example.com/second"))
+
+        for _ in 0..<100 where saved.value.filter({ $0.status == .summarized }).count < 2 {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(saved.value.map(\.title), ["second", "first"])
+        XCTAssertEqual(saved.value.map(\.status), [.summarized, .summarized])
+    }
+
+    @MainActor
+    func testImportWorkerMarksUnreadablePageFailed() async throws {
+        let saved = SavedBookmarks()
+        let worker = BookmarkImportWorker(
+            store: memoryStore(saved),
+            markdownStore: .at { try temporaryDirectory() },
+            summarizer: URLTitleSummarizer(),
+            pageLoader: { _ in PageSnapshot(title: "Blocked", description: "", markdown: "") },
+            statusHandler: { _ in }
+        )
+
+        worker.enqueue(.importURL("https://example.com/blocked"))
+
+        for _ in 0..<100 where saved.value.first?.status == .pending || saved.value.isEmpty {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(saved.value.first?.status, .failed)
+        XCTAssertTrue(saved.value.first?.summary.contains("No readable page text") == true)
     }
 
     func testLegacyStorageMigratesIntoClawliciousRoot() throws {
@@ -768,6 +813,19 @@ private final class SavedBookmarks: @unchecked Sendable {
     var value: [Bookmark] = []
 }
 
+private func memoryStore(_ saved: SavedBookmarks) -> BookmarkStore {
+    BookmarkStore(
+        load: { saved.value },
+        save: { saved.value = $0 },
+        transaction: { mutation in
+            var bookmarks = saved.value
+            try mutation(&bookmarks)
+            saved.value = bookmarks
+            return bookmarks
+        }
+    )
+}
+
 private struct FailingSummarizer: BookmarkSummarizing {
     func summarize(url: URL, page: PageSnapshot, context: BookmarkLibraryContext) async throws -> BookmarkMetadata {
         XCTFail("Search must stay local and AI-free.")
@@ -783,6 +841,12 @@ private struct SuccessfulSummarizer: BookmarkSummarizing {
             tags: ["swift", "macos"],
             category: "Development"
         )
+    }
+}
+
+private struct URLTitleSummarizer: BookmarkSummarizing {
+    func summarize(url: URL, page: PageSnapshot, context: BookmarkLibraryContext) async throws -> BookmarkMetadata {
+        BookmarkMetadata(title: url.lastPathComponent, summary: page.markdown, tags: ["background", "test"], category: "Testing")
     }
 }
 

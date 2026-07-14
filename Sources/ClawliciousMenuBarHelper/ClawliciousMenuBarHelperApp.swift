@@ -81,7 +81,7 @@ private struct HelperMenuView: View {
 }
 
 @MainActor
-private final class HelperStatus: ObservableObject {
+final class HelperStatus: ObservableObject {
     static let shared = HelperStatus()
 
     @Published private(set) var message: String?
@@ -173,6 +173,10 @@ final class HelperDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installHotKey()
+        BrowserBookmarkletServer.shared.start { command in
+            Task { @MainActor in BookmarkImportWorker.shared.enqueue(command) }
+        }
+        Task { await CodexAppServerSession.shared.warmUpIfNeeded() }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -230,7 +234,8 @@ private enum HelperActions {
             guard let urlString = try await CurrentBrowserURLReader.urlString(from: app) else {
                 return "No supported browser URL found."
             }
-            return await importInBackground(urlString) ? "Added bookmark. Summarizing..." : "Could not open Clawlicious."
+            BookmarkImportWorker.shared.enqueue(.importURL(urlString))
+            return "Added bookmark. Summarizing..."
         } catch {
             return error.localizedDescription
         }
@@ -241,38 +246,4 @@ private enum HelperActions {
         return NSWorkspace.shared.open(url)
     }
 
-    static func importInBackground(_ urlString: String) async -> Bool {
-        guard var components = URLComponents(string: "clawlicious://open") else { return false }
-        let wasRunning = !NSRunningApplication.runningApplications(withBundleIdentifier: "dev.mxcl.clawlicious").isEmpty
-        components.host = "import"
-        components.queryItems = [
-            URLQueryItem(name: "url", value: urlString),
-            URLQueryItem(name: "background", value: "1"),
-            URLQueryItem(name: "notify", value: "1"),
-            URLQueryItem(name: "wasRunning", value: wasRunning ? "1" : "0")
-        ]
-        guard let url = components.url else { return false }
-        guard let appURL = mainAppURL else {
-            return NSWorkspace.shared.open(url)
-        }
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = false
-        return await withCheckedContinuation { continuation in
-            NSWorkspace.shared.open([url], withApplicationAt: appURL, configuration: configuration) { _, error in
-                continuation.resume(returning: error == nil)
-            }
-        }
-    }
-
-    private static var mainAppURL: URL? {
-        let bundledAppURL = Bundle.main.bundleURL
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        if bundledAppURL.pathExtension == "app" {
-            return bundledAppURL
-        }
-        return NSWorkspace.shared.urlForApplication(withBundleIdentifier: "dev.mxcl.clawlicious")
-    }
 }
