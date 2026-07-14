@@ -60,6 +60,10 @@ final class BookmarkImportWorker {
             )
             let saved = try complete(bookmark, metadata: metadata)
             try markdownStore.save(saved, page.markdown)
+            guard try store.load().contains(where: { $0.id == saved.id }) else {
+                try markdownStore.delete(saved.id)
+                throw workerError("Bookmark was deleted before summarization completed.")
+            }
             changed(saved)
             show("Saved \(saved.title).")
         } catch {

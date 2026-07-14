@@ -134,6 +134,36 @@ final class BookmarkLibraryTests: XCTestCase {
     }
 
     @MainActor
+    func testImportWorkerRemovesMarkdownForConcurrentlyDeletedBookmark() async throws {
+        let saved = SavedBookmarks()
+        let markdown = MarkdownRecorder()
+        let worker = BookmarkImportWorker(
+            store: memoryStore(saved),
+            markdownStore: BookmarkMarkdownStore(
+                save: { bookmark, _ in
+                    markdown.saved = bookmark.id
+                    saved.value = []
+                },
+                refresh: { _, _ in },
+                updateMetadata: { _ in },
+                delete: { markdown.deleted = $0 },
+                directory: { FileManager.default.temporaryDirectory }
+            ),
+            summarizer: URLTitleSummarizer(),
+            pageLoader: { _ in PageSnapshot(title: "Page", description: "", markdown: String(repeating: "Readable page text. ", count: 8)) },
+            statusHandler: { _ in }
+        )
+
+        worker.enqueue(.importURL("https://example.com/deleted"))
+
+        for _ in 0..<100 where markdown.deleted == nil {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(markdown.deleted, markdown.saved)
+        XCTAssertTrue(saved.value.isEmpty)
+    }
+
+    @MainActor
     func testCommandBackedLibrarySendsImportRetryAndResummarize() async throws {
         let bookmark = testBookmark(title: "Existing", url: "https://example.com/existing")
         let recorder = CommandRecorder()
@@ -874,6 +904,11 @@ private func temporaryDirectory() throws -> URL {
 
 private final class SavedBookmarks: @unchecked Sendable {
     var value: [Bookmark] = []
+}
+
+private final class MarkdownRecorder: @unchecked Sendable {
+    var saved: Bookmark.ID?
+    var deleted: Bookmark.ID?
 }
 
 private actor CommandRecorder {

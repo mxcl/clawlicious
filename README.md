@@ -25,7 +25,8 @@ open it, and drag Clawlicious to Applications.
 
 Paste a URL into the `+` popover, or put your browser in front and press
 Command-Control-Option-B. Clawlicious loads the page, files it, and keeps the
-original Markdown beside the metadata.
+original Markdown beside the metadata. The menu bar helper handles shortcut
+imports in the background, so the main app stays closed.
 
 The shortcut supports Safari, Chrome, ChatGPT Atlas, Brave, Edge, Firefox, and
 Arc. For other browsers, choose **Bookmark > Copy Browser Bookmarklet** and use
@@ -80,7 +81,7 @@ The release starts at version 1.0.0; set `MARKETING_VERSION` for later releases.
 
 ```sh
 $ swift test
-Executed 33 tests, with 0 failures
+Executed 40 tests, with 0 failures
 ```
 
 Build the app with `scripts/build.sh --run`. Clawlicious is a Swift Package, so
