@@ -10,7 +10,9 @@ enum MenuBarHelperLauncher {
             return
         }
 
-        NSWorkspace.shared.openApplication(at: helperURL, configuration: .init()) { _, error in
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = false
+        NSWorkspace.shared.openApplication(at: helperURL, configuration: configuration) { _, error in
             if let error {
                 NSLog("Clawlicious menu bar helper failed to launch: \(error.localizedDescription)")
             }

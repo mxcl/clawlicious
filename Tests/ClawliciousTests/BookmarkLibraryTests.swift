@@ -133,6 +133,69 @@ final class BookmarkLibraryTests: XCTestCase {
         XCTAssertTrue(saved.value.first?.summary.contains("No readable page text") == true)
     }
 
+    @MainActor
+    func testCommandBackedLibrarySendsImportRetryAndResummarize() async throws {
+        let bookmark = testBookmark(title: "Existing", url: "https://example.com/existing")
+        let recorder = CommandRecorder()
+        let client = BookmarkCommandClient { command in await recorder.append(command) }
+        let library = BookmarkLibrary(
+            store: BookmarkStore(load: { [bookmark] }, save: { _ in }),
+            commandClient: client
+        )
+
+        XCTAssertTrue(library.addBookmark("example.com/new"))
+        library.retryBookmark(bookmark)
+        library.resummarizeBookmark(bookmark)
+
+        for _ in 0..<50 where await recorder.values.count < 3 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let commands = await recorder.values
+        XCTAssertEqual(Set(commands), Set([
+            .importURL("https://example.com/new"),
+            .retry(bookmark.id),
+            .resummarize(bookmark.id)
+        ]))
+    }
+
+    @MainActor
+    func testCommandFailureUpdatesLibraryStatus() async throws {
+        let client = BookmarkCommandClient { _ in throw NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "Helper unavailable"]) }
+        let library = BookmarkLibrary(
+            store: BookmarkStore(load: { [] }, save: { _ in }),
+            commandClient: client
+        )
+
+        XCTAssertTrue(library.addBookmark("example.com/new"))
+
+        for _ in 0..<50 where library.statusLine != "Helper unavailable" {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(library.statusLine, "Helper unavailable")
+        XCTAssertTrue(library.bookmarks.isEmpty)
+    }
+
+    @MainActor
+    func testReloadSelectsChangedBookmarkAndPreservesFilter() {
+        let first = testBookmark(title: "First", url: "https://example.com/first")
+        var second = testBookmark(title: "Second", url: "https://example.com/second")
+        second.category = "Research"
+        let saved = SavedBookmarks()
+        saved.value = [first, second]
+        let library = BookmarkLibrary(store: memoryStore(saved))
+        library.filter = .category("Research")
+        library.selectedID = first.id
+
+        var changed = second
+        changed.title = "Updated"
+        saved.value = [first, changed]
+        library.reload(selecting: second.id)
+
+        XCTAssertEqual(library.selectedID, second.id)
+        XCTAssertEqual(library.selectedBookmark?.title, "Updated")
+        XCTAssertEqual(library.filter, .category("Research"))
+    }
+
     func testLegacyStorageMigratesIntoClawliciousRoot() throws {
         let oldDirectory = try temporaryDirectory()
         let newDirectory = try temporaryDirectory()
@@ -811,6 +874,14 @@ private func temporaryDirectory() throws -> URL {
 
 private final class SavedBookmarks: @unchecked Sendable {
     var value: [Bookmark] = []
+}
+
+private actor CommandRecorder {
+    private(set) var values: [BookmarkServerCommand] = []
+
+    func append(_ command: BookmarkServerCommand) {
+        values.append(command)
+    }
 }
 
 private func memoryStore(_ saved: SavedBookmarks) -> BookmarkStore {

@@ -13,16 +13,19 @@ final class BookmarkLibrary: ObservableObject {
     private let store: BookmarkStore
     private let summarizer: BookmarkSummarizing
     private let markdownStore: BookmarkMarkdownStore
+    private let commandClient: BookmarkCommandClient?
     private var completionNotificationIDs = Set<Bookmark.ID>()
 
     init(
         store: BookmarkStore = .live,
         summarizer: BookmarkSummarizing = CodexBookmarkSummarizer(),
-        markdownStore: BookmarkMarkdownStore = .live
+        markdownStore: BookmarkMarkdownStore = .live,
+        commandClient: BookmarkCommandClient? = nil
     ) {
         self.store = store
         self.summarizer = summarizer
         self.markdownStore = markdownStore
+        self.commandClient = commandClient
         do {
             bookmarks = try store.load().map {
                 var bookmark = $0
@@ -83,6 +86,17 @@ final class BookmarkLibrary: ObservableObject {
     }
 
     func addBookmark(_ url: URL, notifyOnCompletion: Bool = false) {
+        if let commandClient {
+            statusLine = "Sending \(url.bookmarkDomain) to the menu helper..."
+            Task {
+                do {
+                    try await commandClient.send(.importURL(url.absoluteString))
+                } catch {
+                    statusLine = error.localizedDescription
+                }
+            }
+            return
+        }
         if let existing = bookmarks.first(where: { $0.url == url }) {
             selectedID = existing.id
             if existing.status == .failed {
@@ -162,7 +176,52 @@ final class BookmarkLibrary: ObservableObject {
     }
 
     func retryBookmark(_ bookmark: Bookmark) {
+        if let commandClient {
+            statusLine = "Retrying \(bookmark.url.bookmarkDomain)..."
+            Task {
+                do {
+                    try await commandClient.send(.retry(bookmark.id))
+                } catch {
+                    statusLine = error.localizedDescription
+                }
+            }
+            return
+        }
         retrySummary(bookmark.id, url: bookmark.url)
+    }
+
+    func resummarizeBookmark(_ bookmark: Bookmark) {
+        guard let commandClient else { return }
+        statusLine = "Resummarizing \(bookmark.url.bookmarkDomain)..."
+        Task {
+            do {
+                try await commandClient.send(.resummarize(bookmark.id))
+            } catch {
+                statusLine = error.localizedDescription
+            }
+        }
+    }
+
+    func reload(selecting requestedID: Bookmark.ID? = nil) {
+        do {
+            let loaded = try store.load().map {
+                var bookmark = $0
+                bookmark.tags = normalizeTags(bookmark.tags)
+                bookmark.category = normalizeCategory(bookmark.category)
+                return bookmark
+            }
+            bookmarks = loaded
+            if let requestedID, loaded.contains(where: { $0.id == requestedID }) {
+                selectedID = requestedID
+            } else if let selectedID, !loaded.contains(where: { $0.id == selectedID }) {
+                self.selectedID = loaded.first?.id
+            } else if selectedID == nil {
+                selectedID = loaded.first?.id
+            }
+            resetFilterIfEmpty()
+        } catch {
+            statusLine = error.localizedDescription
+        }
     }
 
     func summarizeBookmark(_ id: Bookmark.ID, url: URL, page: PageSnapshot) {
@@ -226,13 +285,20 @@ final class BookmarkLibrary: ObservableObject {
     }
 
     func deleteBookmark(_ id: Bookmark.ID) {
-        guard let index = bookmarks.firstIndex(where: { $0.id == id }) else { return }
-        let bookmark = bookmarks.remove(at: index)
+        guard let bookmark = bookmarks.first(where: { $0.id == id }) else { return }
+        do {
+            bookmarks = try store.mutate { bookmarks in
+                bookmarks.removeAll { $0.id == id }
+            }
+        } catch {
+            statusLine = error.localizedDescription
+            return
+        }
         if selectedID == id {
             selectedID = visibleBookmarks.first?.id ?? bookmarks.first?.id
         }
-        save()
         statusLine = deleteMarkdown(id) ?? "Deleted \(bookmark.title)."
+        ClawliciousLibraryNotification.post(bookmarkID: id)
     }
 
     private func retrySummary(_ id: Bookmark.ID, url: URL) {

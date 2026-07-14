@@ -4,10 +4,6 @@ import ClawliciousCore
 
 extension Notification.Name {
     static let clawliciousNewBookmark = Notification.Name("ClawliciousNewBookmark")
-    static let clawliciousImportBookmark = Notification.Name("ClawliciousImportBookmark")
-    static let clawliciousQueuedImportBookmark = Notification.Name("ClawliciousQueuedImportBookmark")
-    static let clawliciousImportCompleteBookmark = Notification.Name("ClawliciousImportCompleteBookmark")
-    static let clawliciousUpdateBookmarkMetadata = Notification.Name("ClawliciousUpdateBookmarkMetadata")
     static let clawliciousBrowserImportStatus = Notification.Name("ClawliciousBrowserImportStatus")
     static let clawliciousDeleteBookmark = Notification.Name("ClawliciousDeleteBookmark")
     static let clawliciousResummarizeBookmark = Notification.Name("ClawliciousResummarizeBookmark")
@@ -32,27 +28,6 @@ final class ClawliciousAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidBecomeActive(_ notification: Notification) {
         if NSApp.mainMenu?.items.contains(where: { $0.title == "Edit" }) != true {
             installMainMenu()
-        }
-    }
-
-    func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls where url.scheme == "clawlicious" {
-            guard url.host == "import",
-                  let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-                  let urlString = components.queryItems?.first(where: { $0.name == "url" })?.value,
-                  !urlString.isEmpty else {
-                continue
-            }
-            let background = components.queryItems?.contains { $0.name == "background" && $0.value == "1" } == true
-            let notify = components.queryItems?.contains { $0.name == "notify" && $0.value == "1" } == true
-            let wasRunning = components.queryItems?.contains { $0.name == "wasRunning" && $0.value == "1" } == true
-            ImportURLQueue.shared.enqueue(urlString, notifyOnCompletion: notify)
-            if background, !wasRunning {
-                NSApp.hide(nil)
-                DispatchQueue.main.async {
-                    NSApp.hide(nil)
-                }
-            }
         }
     }
 
@@ -243,7 +218,9 @@ private final class MenuTarget: NSObject, NSMenuItemValidation {
                     NotificationCenter.default.post(name: .clawliciousBrowserImportStatus, object: "No supported browser URL found\(appName).")
                     return
                 }
-                NotificationCenter.default.post(name: .clawliciousImportBookmark, object: urlString)
+                MenuBarHelperLauncher.launchIfNeeded()
+                try await BookmarkCommandClient.clawlicious.send(.importURL(urlString))
+                NotificationCenter.default.post(name: .clawliciousBrowserImportStatus, object: "Added bookmark. Summarizing...")
             } catch {
                 NotificationCenter.default.post(name: .clawliciousBrowserImportStatus, object: "Browser URL shortcut failed: \(error.localizedDescription)")
             }

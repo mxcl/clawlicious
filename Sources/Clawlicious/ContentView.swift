@@ -3,7 +3,7 @@ import ClawliciousCore
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var library = BookmarkLibrary()
+    @StateObject private var library = BookmarkLibrary(commandClient: .clawlicious)
     @StateObject private var browser = BrowserModel()
     @State private var bookmarkPendingDeletion: Bookmark?
     @State private var isAddingBookmark = false
@@ -25,7 +25,7 @@ struct ContentView: View {
                     }
                 }
         } detail: {
-            DetailWebView(library: library, bookmark: library.selectedBookmark, browser: browser)
+            DetailWebView(bookmark: library.selectedBookmark, browser: browser)
                 .toolbar {
                     if library.selectedBookmark != nil {
                         ToolbarItem {
@@ -97,44 +97,31 @@ struct ContentView: View {
         .frame(minWidth: 1120, minHeight: 680)
         .onAppear {
             publishBookmarkSelection()
-            drainQueuedImports()
         }
         .onChange(of: library.selectedID) { _, _ in publishBookmarkSelection() }
-        .onReceive(NotificationCenter.default.publisher(for: .clawliciousQueuedImportBookmark)) { _ in
-            drainQueuedImports()
-        }
         .onReceive(NotificationCenter.default.publisher(for: .clawliciousDeleteBookmark)) { _ in
             bookmarkPendingDeletion = library.selectedBookmark
         }
         .onReceive(NotificationCenter.default.publisher(for: .clawliciousResummarizeBookmark)) { _ in
             if let bookmark = library.selectedBookmark {
-                Task {
-                    do {
-                        let page = try await browser.pageSnapshot()
-                        library.resummarizeBookmark(bookmark, page: page)
-                    } catch {
-                        library.failResummarizeBookmark(bookmark, error: error)
-                    }
-                }
+                library.resummarizeBookmark(bookmark)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .clawliciousNewBookmark)) { _ in
             isAddingBookmark = true
         }
-        .onReceive(NotificationCenter.default.publisher(for: .clawliciousImportBookmark)) { notification in
-            guard let urlString = notification.object as? String else { return }
-            library.addBookmark(urlString)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .clawliciousImportCompleteBookmark)) { notification in
-            guard let bookmark = notification.object as? Bookmark else { return }
-            library.addCompleteBookmark(bookmark)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .clawliciousUpdateBookmarkMetadata)) { notification in
-            guard let bookmark = notification.object as? Bookmark else { return }
-            library.updateBookmarkMetadata(bookmark)
-        }
         .onReceive(NotificationCenter.default.publisher(for: .clawliciousBrowserImportStatus)) { notification in
             if let message = notification.object as? String {
+                library.statusLine = message
+            }
+        }
+        .onReceive(DistributedNotificationCenter.default().publisher(for: ClawliciousLibraryNotification.name)) { notification in
+            let id = (notification.userInfo?[ClawliciousLibraryNotification.bookmarkIDKey] as? String)
+                .flatMap(UUID.init(uuidString:))
+            library.reload(selecting: id)
+        }
+        .onReceive(DistributedNotificationCenter.default().publisher(for: ClawliciousStatusNotification.name)) { notification in
+            if let message = notification.userInfo?[ClawliciousStatusNotification.messageKey] as? String {
                 library.statusLine = message
             }
         }
@@ -165,11 +152,6 @@ struct ContentView: View {
         NotificationCenter.default.post(name: .clawliciousBookmarkSelectionChanged, object: library.selectedBookmark?.id)
     }
 
-    private func drainQueuedImports() {
-        for request in ImportURLQueue.shared.drain() {
-            library.addBookmark(request.urlString, notifyOnCompletion: request.notifyOnCompletion)
-        }
-    }
 }
 
 private struct SidebarView: View {
@@ -478,7 +460,6 @@ private struct TagPill: View {
 }
 
 private struct DetailWebView: View {
-    @ObservedObject var library: BookmarkLibrary
     var bookmark: Bookmark?
     @ObservedObject var browser: BrowserModel
 
@@ -488,14 +469,7 @@ private struct DetailWebView: View {
                 ZStack {
                     BookmarkWebView(
                         url: bookmark.url,
-                        browser: browser,
-                        onPageSnapshot: { requestedURL, page in
-                            library.refreshBookmarkMarkdown(bookmark.id, url: requestedURL, page: page)
-                            library.summarizeBookmark(bookmark.id, url: requestedURL, page: page)
-                        },
-                        onPageSnapshotFailure: { error in
-                            library.failBookmark(bookmark.id, error: error)
-                        }
+                        browser: browser
                     )
                     .id(bookmark.id)
                     .opacity(browser.contentMode == .html ? 1 : 0)
@@ -510,11 +484,6 @@ private struct DetailWebView: View {
             }
         }
         .background(.background)
-        .onChange(of: bookmark?.updatedAt) { _, _ in
-            if bookmark?.status == .pending, browser.extractedMarkdown.isEmpty {
-                browser.reload()
-            }
-        }
     }
 }
 

@@ -113,8 +113,6 @@ final class BrowserModel: ObservableObject {
 struct BookmarkWebView: NSViewRepresentable {
     var url: URL?
     @ObservedObject var browser: BrowserModel
-    var onPageSnapshot: (URL, PageSnapshot) -> Void = { _, _ in }
-    var onPageSnapshotFailure: (Error) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(browser: browser)
@@ -131,8 +129,6 @@ struct BookmarkWebView: NSViewRepresentable {
 
     func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.attach(webView)
-        context.coordinator.onPageSnapshot = onPageSnapshot
-        context.coordinator.onPageSnapshotFailure = onPageSnapshotFailure
         guard context.coordinator.bookmarkURL != url else { return }
         context.coordinator.bookmarkURL = url
         guard let url else {
@@ -146,8 +142,6 @@ struct BookmarkWebView: NSViewRepresentable {
     @MainActor
     final class Coordinator: NSObject, WKNavigationDelegate {
         var bookmarkURL: URL?
-        var onPageSnapshot: (URL, PageSnapshot) -> Void = { _, _ in }
-        var onPageSnapshotFailure: (Error) -> Void = { _ in }
         private let browser: BrowserModel
 
         init(browser: BrowserModel) {
@@ -169,15 +163,6 @@ struct BookmarkWebView: NSViewRepresentable {
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             browser.sync(from: webView)
-            guard let bookmarkURL else { return }
-            Task {
-                do {
-                    let snapshot = try await browser.pageSnapshot(minimumMarkdownLength: 80)
-                    onPageSnapshot(bookmarkURL, try BrowserModel.requireReadableMarkdown(snapshot))
-                } catch {
-                    onPageSnapshotFailure(error)
-                }
-            }
         }
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {

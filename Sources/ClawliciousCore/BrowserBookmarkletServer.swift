@@ -1,7 +1,7 @@
 import Foundation
 import Network
 
-public enum BookmarkServerCommand: Sendable, Equatable {
+public enum BookmarkServerCommand: Sendable, Hashable {
     case importURL(String)
     case retry(Bookmark.ID)
     case resummarize(Bookmark.ID)
