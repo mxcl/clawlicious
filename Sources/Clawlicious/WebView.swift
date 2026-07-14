@@ -150,6 +150,7 @@ struct BookmarkWebView: NSViewRepresentable {
 
         func attach(_ webView: WKWebView) {
             webView.navigationDelegate = self
+            (webView as? ToolbarInsetWebView)?.updateToolbarInset()
             browser.attach(webView)
         }
 
@@ -158,10 +159,12 @@ struct BookmarkWebView: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+            (webView as? ToolbarInsetWebView)?.updateToolbarInset()
             browser.sync(from: webView)
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            (webView as? ToolbarInsetWebView)?.updateToolbarInset()
             browser.sync(from: webView)
         }
 
@@ -178,10 +181,12 @@ struct BookmarkWebView: NSViewRepresentable {
 private final class ToolbarInsetWebView: WKWebView {
     override func layout() {
         super.layout()
+        updateToolbarInset()
+    }
 
+    func updateToolbarInset() {
         guard let window else { return }
         let top = window.frame.height - window.contentLayoutRect.height
-        guard obscuredContentInsets.top != top else { return }
         obscuredContentInsets.top = top
     }
 }
