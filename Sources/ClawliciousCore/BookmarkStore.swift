@@ -1,37 +1,61 @@
 import Foundation
+import Darwin
 
-struct BookmarkStore: Sendable {
-    var load: @Sendable () throws -> [Bookmark]
-    var save: @Sendable ([Bookmark]) throws -> Void
+public struct BookmarkStore: Sendable {
+    public var load: @Sendable () throws -> [Bookmark]
+    public var save: @Sendable ([Bookmark]) throws -> Void
+    private var transaction: @Sendable (@Sendable (inout [Bookmark]) throws -> Void) throws -> [Bookmark]
 
-    static let live = at({ try bookmarksURL() }, seedOnMissing: true)
+    public init(
+        load: @escaping @Sendable () throws -> [Bookmark],
+        save: @escaping @Sendable ([Bookmark]) throws -> Void,
+        transaction: (@Sendable (@Sendable (inout [Bookmark]) throws -> Void) throws -> [Bookmark])? = nil
+    ) {
+        self.load = load
+        self.save = save
+        self.transaction = transaction ?? { mutation in
+            var bookmarks = try load()
+            try mutation(&bookmarks)
+            try save(bookmarks)
+            return bookmarks
+        }
+    }
 
-    static func at(_ storageURL: @escaping @Sendable () throws -> URL, seedOnMissing: Bool = false) -> BookmarkStore {
+    public static let live = at({ try bookmarksURL() }, seedOnMissing: true)
+
+    public static func at(_ storageURL: @escaping @Sendable () throws -> URL, seedOnMissing: Bool = false) -> BookmarkStore {
         BookmarkStore(
             load: {
                 let url = try storageURL()
-                guard FileManager.default.fileExists(atPath: url.path) else {
-                    let bookmarks = seedOnMissing ? onboardingBookmarks : []
-                    if seedOnMissing {
-                        try persist(bookmarks, to: url)
-                    }
-                    return bookmarks
+                return try withBookmarkLock(for: url) {
+                    try read(from: url, seedOnMissing: seedOnMissing)
                 }
-                let data = try Data(contentsOf: url)
-                var bookmarks = try JSONDecoder.clawlicious.decode([Bookmark].self, from: data)
-                if repairDuplicateIDs(&bookmarks) {
-                    try persist(bookmarks, to: url)
-                }
-                return bookmarks
             },
             save: { bookmarks in
-                try persist(bookmarks, to: storageURL())
+                let url = try storageURL()
+                try withBookmarkLock(for: url) {
+                    try persist(bookmarks, to: url)
+                }
+            },
+            transaction: { mutation in
+                let url = try storageURL()
+                return try withBookmarkLock(for: url) {
+                    var bookmarks = try read(from: url, seedOnMissing: seedOnMissing)
+                    try mutation(&bookmarks)
+                    try persist(bookmarks, to: url)
+                    return bookmarks
+                }
             }
         )
     }
+
+    @discardableResult
+    public func mutate(_ mutation: @escaping @Sendable (inout [Bookmark]) throws -> Void) throws -> [Bookmark] {
+        try transaction(mutation)
+    }
 }
 
-func clawliciousStorageURL() throws -> URL {
+public func clawliciousStorageURL() throws -> URL {
     let base = try FileManager.default.url(
         for: .documentDirectory,
         in: .userDomainMask,
@@ -47,12 +71,42 @@ private func bookmarksURL() throws -> URL {
     try clawliciousStorageURL().appending(path: "bookmarks.json")
 }
 
-func migrateLegacyStorage(to newDirectory: URL) throws {
+private func read(from url: URL, seedOnMissing: Bool) throws -> [Bookmark] {
+    guard FileManager.default.fileExists(atPath: url.path) else {
+        let bookmarks = seedOnMissing ? onboardingBookmarks : []
+        if seedOnMissing {
+            try persist(bookmarks, to: url)
+        }
+        return bookmarks
+    }
+    let data = try Data(contentsOf: url)
+    var bookmarks = try JSONDecoder.clawlicious.decode([Bookmark].self, from: data)
+    if repairDuplicateIDs(&bookmarks) {
+        try persist(bookmarks, to: url)
+    }
+    return bookmarks
+}
+
+private func withBookmarkLock<T>(for url: URL, operation: () throws -> T) throws -> T {
+    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    let descriptor = open(url.appendingPathExtension("lock").path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
+    guard descriptor >= 0 else {
+        throw POSIXError(.EIO)
+    }
+    defer { close(descriptor) }
+    guard flock(descriptor, LOCK_EX) == 0 else {
+        throw POSIXError(.EIO)
+    }
+    defer { flock(descriptor, LOCK_UN) }
+    return try operation()
+}
+
+public func migrateLegacyStorage(to newDirectory: URL) throws {
     guard let oldDirectory = try? legacyApplicationSupportURL() else { return }
     try migrateLegacyStorage(from: oldDirectory, to: newDirectory)
 }
 
-func migrateLegacyStorage(from oldDirectory: URL, to newDirectory: URL) throws {
+public func migrateLegacyStorage(from oldDirectory: URL, to newDirectory: URL) throws {
     guard FileManager.default.fileExists(atPath: oldDirectory.path) else { return }
     try FileManager.default.createDirectory(at: newDirectory, withIntermediateDirectories: true)
 
@@ -154,7 +208,7 @@ private func onboardingBookmark(id: String, path: String, title: String, summary
     )
 }
 
-extension JSONDecoder {
+public extension JSONDecoder {
     static let clawlicious: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
@@ -162,7 +216,7 @@ extension JSONDecoder {
     }()
 }
 
-extension JSONEncoder {
+public extension JSONEncoder {
     static let clawlicious: JSONEncoder = {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601

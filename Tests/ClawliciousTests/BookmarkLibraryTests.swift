@@ -75,6 +75,19 @@ final class BookmarkLibraryTests: XCTestCase {
         XCTAssertEqual(saved.map(\.id), bookmarks.map(\.id))
     }
 
+    func testBookmarkStoreTransactionsUseLatestDiskState() throws {
+        let url = try temporaryDirectory().appending(path: "bookmarks.json")
+        let first = testBookmark(title: "First", url: "https://example.com/first")
+        let second = testBookmark(title: "Second", url: "https://example.com/second")
+        let writerA = BookmarkStore.at { url }
+        let writerB = BookmarkStore.at { url }
+
+        try writerA.mutate { $0.append(first) }
+        try writerB.mutate { $0.append(second) }
+
+        XCTAssertEqual(try writerA.load().map(\.id), [first.id, second.id])
+    }
+
     func testLegacyStorageMigratesIntoClawliciousRoot() throws {
         let oldDirectory = try temporaryDirectory()
         let newDirectory = try temporaryDirectory()

@@ -1,4 +1,5 @@
 import Foundation
+import ClawliciousCore
 import Network
 
 final class BrowserBookmarkletServer: @unchecked Sendable {

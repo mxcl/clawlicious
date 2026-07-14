@@ -1,38 +1,52 @@
 import Foundation
-import ClawliciousCore
-
-protocol BookmarkSummarizing: Sendable {
+public protocol BookmarkSummarizing: Sendable {
     func summarize(url: URL, page: PageSnapshot, context: BookmarkLibraryContext) async throws -> BookmarkMetadata
 }
 
-struct CodexBookmarkSummarizer: BookmarkSummarizing {
-    func summarize(url: URL, page: PageSnapshot, context: BookmarkLibraryContext) async throws -> BookmarkMetadata {
+public struct CodexBookmarkSummarizer: BookmarkSummarizing {
+    public init() {}
+
+    public func summarize(url: URL, page: PageSnapshot, context: BookmarkLibraryContext) async throws -> BookmarkMetadata {
         return try await CodexResponsesClient().metadata(for: url, page: page, context: context)
     }
 }
 
-struct BookmarkLibraryContext: Equatable, Sendable {
-    var categories: [String]
-    var tags: [String]
+public struct BookmarkLibraryContext: Equatable, Sendable {
+    public var categories: [String]
+    public var tags: [String]
+
+    public init(categories: [String], tags: [String]) {
+        self.categories = categories
+        self.tags = tags
+    }
 }
 
-struct CodexAuth: Equatable {
-    enum Source: String {
+public struct CodexAuth: Equatable, Sendable {
+    public enum Source: String, Sendable {
         case environment = "env:OPENAI_API_KEY"
         case authAPIKey = "auth:OPENAI_API_KEY"
         case authAccessToken = "auth:tokens.access_token"
     }
 
-    var token: String
-    var source: Source
-    var scopes: [String]
-    var authMode: String? = nil
-    var chatgptAccountId: String? = nil
-    var chatgptPlanType: String? = nil
+    public var token: String
+    public var source: Source
+    public var scopes: [String]
+    public var authMode: String? = nil
+    public var chatgptAccountId: String? = nil
+    public var chatgptPlanType: String? = nil
+
+    public init(token: String, source: Source, scopes: [String], authMode: String? = nil, chatgptAccountId: String? = nil, chatgptPlanType: String? = nil) {
+        self.token = token
+        self.source = source
+        self.scopes = scopes
+        self.authMode = authMode
+        self.chatgptAccountId = chatgptAccountId
+        self.chatgptPlanType = chatgptPlanType
+    }
 }
 
-enum CodexAuthReader {
-    static func read(path: URL? = nil, environment: [String: String] = ProcessInfo.processInfo.environment) throws -> CodexAuth {
+public enum CodexAuthReader {
+    public static func read(path: URL? = nil, environment: [String: String] = ProcessInfo.processInfo.environment) throws -> CodexAuth {
         if let key = environment["OPENAI_API_KEY"]?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty {
             return CodexAuth(token: key, source: .environment, scopes: [])
         }
@@ -197,8 +211,8 @@ private struct CodexResponsesClient {
     }
 }
 
-actor CodexAppServerSession {
-    static let shared = CodexAppServerSession()
+public actor CodexAppServerSession {
+    public static let shared = CodexAppServerSession()
 
     private var process: Process?
     private var input: FileHandle?
@@ -210,7 +224,7 @@ actor CodexAppServerSession {
     private var auth: CodexAuth?
     private var accountId: String?
 
-    func warmUpIfNeeded() async {
+    public func warmUpIfNeeded() async {
         guard let auth = try? CodexAuthReader.read(),
               auth.source == .authAccessToken,
               !auth.scopes.contains("api.responses.write") else {

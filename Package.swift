@@ -39,7 +39,7 @@ let package = Package(
         ),
         .testTarget(
             name: "ClawliciousTests",
-            dependencies: ["Clawlicious", "ClawliciousCore"]
+            dependencies: ["Clawlicious", "ClawliciousCore", "ClawliciousMenuBarHelper"]
         )
     ]
 )

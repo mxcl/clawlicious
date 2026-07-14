@@ -1,15 +1,23 @@
 import Foundation
 
-struct BookmarkMarkdownStore: Sendable {
-    var save: @Sendable (Bookmark, String) throws -> Void
-    var refresh: @Sendable (Bookmark, String) throws -> Void
-    var updateMetadata: @Sendable (Bookmark) throws -> Void
-    var delete: @Sendable (Bookmark.ID) throws -> Void
-    var directory: @Sendable () throws -> URL
+public struct BookmarkMarkdownStore: Sendable {
+    public var save: @Sendable (Bookmark, String) throws -> Void
+    public var refresh: @Sendable (Bookmark, String) throws -> Void
+    public var updateMetadata: @Sendable (Bookmark) throws -> Void
+    public var delete: @Sendable (Bookmark.ID) throws -> Void
+    public var directory: @Sendable () throws -> URL
 
-    static let live = at(markdownDirectory)
+    public init(save: @escaping @Sendable (Bookmark, String) throws -> Void, refresh: @escaping @Sendable (Bookmark, String) throws -> Void, updateMetadata: @escaping @Sendable (Bookmark) throws -> Void, delete: @escaping @Sendable (Bookmark.ID) throws -> Void, directory: @escaping @Sendable () throws -> URL) {
+        self.save = save
+        self.refresh = refresh
+        self.updateMetadata = updateMetadata
+        self.delete = delete
+        self.directory = directory
+    }
 
-    static func at(_ directory: @escaping @Sendable () throws -> URL) -> BookmarkMarkdownStore {
+    public static let live = at(markdownDirectory)
+
+    public static func at(_ directory: @escaping @Sendable () throws -> URL) -> BookmarkMarkdownStore {
         BookmarkMarkdownStore(
             save: { bookmark, markdown in
                 let directory = try directory()
