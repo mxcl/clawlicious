@@ -91,7 +91,6 @@ struct ContentView: View {
                     }
                 }
         }
-        .toolbarColorScheme(.dark, for: .windowToolbar)
         .background {
             LiquidGlassSurface(material: .regularMaterial, tint: .clear)
                 .ignoresSafeArea()
