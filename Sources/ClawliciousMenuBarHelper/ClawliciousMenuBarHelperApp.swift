@@ -69,9 +69,9 @@ private struct HelperMenuView: View {
 
             Divider()
 
-            Button("Quit Menu Bar Helper") {
+            Button("Quit") {
                 NSApp.terminate(nil)
-            }
+            }.keyboardShortcut("q", modifiers: [.command])
         }
     }
 
