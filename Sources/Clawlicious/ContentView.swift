@@ -28,7 +28,6 @@ struct ContentView: View {
             DetailWebView(bookmark: library.selectedBookmark, browser: browser)
                 .ignoresSafeArea(edges: .top)
                 .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-                .toolbarColorScheme(.dark, for: .windowToolbar)
                 .toolbar {
                     if library.selectedBookmark != nil {
                         ToolbarItem {
@@ -92,6 +91,7 @@ struct ContentView: View {
                     }
                 }
         }
+        .toolbarColorScheme(.dark, for: .windowToolbar)
         .background {
             LiquidGlassSurface(material: .regularMaterial, tint: .clear)
                 .ignoresSafeArea()
