@@ -3,6 +3,10 @@ import Combine
 import Foundation
 import WebKit
 
+enum MenuBarIconState: Equatable {
+    case idle, processing, processingFlash, success, failure
+}
+
 @MainActor
 final class BookmarkImportWorker: ObservableObject {
     typealias PageLoader = @MainActor @Sendable (URL) async throws -> PageSnapshot
@@ -15,7 +19,9 @@ final class BookmarkImportWorker: ObservableObject {
     private let pageLoader: PageLoader
     private let statusHandler: @MainActor @Sendable (String) -> Void
     private var queue: [BookmarkServerCommand] = []
-    @Published private(set) var isProcessing = false
+    private var isProcessing = false
+    private var iconTask: Task<Void, Never>?
+    @Published private(set) var iconState = MenuBarIconState.idle
 
     init(
         store: BookmarkStore = .live,
@@ -35,19 +41,22 @@ final class BookmarkImportWorker: ObservableObject {
         queue.append(command)
         guard !isProcessing else { return }
         isProcessing = true
+        showProcessingIcon()
         Task { await drain() }
     }
 
     private func drain() async {
+        var succeeded = true
         while !queue.isEmpty {
-            await process(queue.removeFirst())
+            succeeded = await process(queue.removeFirst()) && succeeded
         }
         isProcessing = false
+        showResultIcon(succeeded: succeeded)
     }
 
-    private func process(_ command: BookmarkServerCommand) async {
+    private func process(_ command: BookmarkServerCommand) async -> Bool {
         do {
-            guard let bookmark = try prepare(command) else { return }
+            guard let bookmark = try prepare(command) else { return true }
             show("Summarizing \(bookmark.url.bookmarkDomain)...")
             let page = try PageExtraction.requireReadableMarkdown(await pageLoader(bookmark.url))
             let current = try store.load()
@@ -67,9 +76,36 @@ final class BookmarkImportWorker: ObservableObject {
             }
             changed(saved)
             show("Saved \(saved.title).")
+            return true
         } catch {
             fail(command, error: error)
             show(error.localizedDescription)
+            return false
+        }
+    }
+
+    private func showProcessingIcon() {
+        iconTask?.cancel()
+        iconState = .processing
+        iconTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled else { return }
+                self?.iconState = .processingFlash
+                try? await Task.sleep(for: .milliseconds(100))
+                guard !Task.isCancelled else { return }
+                self?.iconState = .processing
+            }
+        }
+    }
+
+    private func showResultIcon(succeeded: Bool) {
+        iconTask?.cancel()
+        iconState = succeeded ? .success : .failure
+        iconTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            self?.iconState = .idle
         }
     }
 

@@ -14,8 +14,29 @@ struct ClawliciousMenuBarHelperApp: App {
     @StateObject private var worker = BookmarkImportWorker.shared
 
     var body: some Scene {
-        MenuBarExtra("Clawlicious", systemImage: worker.isProcessing ? "bookmark.fill" : "bookmark") {
+        MenuBarExtra {
             HelperMenuView()
+        } label: {
+            Image(systemName: worker.iconState.systemImage)
+                .foregroundStyle(worker.iconState.color)
+                .accessibilityLabel("Clawlicious")
+        }
+    }
+}
+
+private extension MenuBarIconState {
+    var systemImage: String {
+        switch self {
+        case .idle, .processingFlash: "bookmark"
+        case .processing, .success, .failure: "bookmark.fill"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .success: .green
+        case .failure: .red
+        default: .primary
         }
     }
 }
