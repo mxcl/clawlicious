@@ -26,8 +26,6 @@ struct ContentView: View {
                 }
         } detail: {
             DetailWebView(bookmark: library.selectedBookmark, browser: browser)
-                .ignoresSafeArea(edges: .top)
-                .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
                 .toolbar {
                     if library.selectedBookmark != nil {
                         ToolbarItem {
