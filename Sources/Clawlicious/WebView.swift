@@ -121,7 +121,7 @@ struct BookmarkWebView: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
-        let view = WKWebView(frame: .zero, configuration: configuration)
+        let view = ToolbarInsetWebView(frame: .zero, configuration: configuration)
         view.allowsBackForwardNavigationGestures = true
         context.coordinator.attach(view)
         return view
@@ -172,5 +172,16 @@ struct BookmarkWebView: NSViewRepresentable {
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
             browser.sync(from: webView)
         }
+    }
+}
+
+private final class ToolbarInsetWebView: WKWebView {
+    override func layout() {
+        super.layout()
+
+        guard let window else { return }
+        let top = window.frame.height - window.contentLayoutRect.height
+        guard obscuredContentInsets.top != top else { return }
+        obscuredContentInsets.top = top
     }
 }
