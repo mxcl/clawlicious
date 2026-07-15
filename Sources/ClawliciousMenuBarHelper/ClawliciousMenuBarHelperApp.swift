@@ -18,6 +18,7 @@ struct ClawliciousMenuBarHelperApp: App {
             HelperMenuView()
         } label: {
             Image(systemName: worker.iconState.systemImage)
+                .symbolRenderingMode(.palette)
                 .foregroundStyle(worker.iconState.color)
                 .accessibilityLabel("Clawlicious")
         }

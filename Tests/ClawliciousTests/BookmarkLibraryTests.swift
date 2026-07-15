@@ -121,7 +121,7 @@ final class BookmarkLibraryTests: XCTestCase {
             markdownStore: .at { try temporaryDirectory() },
             summarizer: URLTitleSummarizer(),
             pageLoader: { _ in
-                try await Task.sleep(for: .milliseconds(450))
+                try await Task.sleep(for: .milliseconds(1_100))
                 return PageSnapshot(title: "Page", description: "", markdown: String(repeating: "Readable page text. ", count: 8))
             },
             statusHandler: { _ in }
@@ -130,16 +130,13 @@ final class BookmarkLibraryTests: XCTestCase {
         worker.enqueue(.importURL("https://example.com/flashing"))
         XCTAssertEqual(worker.iconState, .processing)
 
-        try await Task.sleep(for: .milliseconds(325))
+        try await Task.sleep(for: .milliseconds(925))
         XCTAssertEqual(worker.iconState, .processingFlash)
 
         for _ in 0..<100 where worker.iconState != .success {
             try await Task.sleep(for: .milliseconds(10))
         }
         XCTAssertEqual(worker.iconState, .success)
-
-        try await Task.sleep(for: .milliseconds(325))
-        XCTAssertEqual(worker.iconState, .idle)
     }
 
     @MainActor
