@@ -89,10 +89,10 @@ final class BookmarkImportWorker: ObservableObject {
         iconState = .processing
         iconTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(900))
+                try? await Task.sleep(for: .milliseconds(750))
                 guard !Task.isCancelled else { return }
                 self?.iconState = .processingFlash
-                try? await Task.sleep(for: .milliseconds(100))
+                try? await Task.sleep(for: .milliseconds(250))
                 guard !Task.isCancelled else { return }
                 self?.iconState = .processing
             }
