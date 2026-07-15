@@ -585,6 +585,14 @@ final class BookmarkLibraryTests: XCTestCase {
         )
     }
 
+    func testAgentConnectionTextIncludesSelectedBookmark() {
+        let bookmark = testBookmark(title: "Swift Notes", url: "https://example.com/swift")
+
+        let prompt = BrowserBookmarkletServer.shared.agentConnectionText(selectedBookmark: bookmark)
+
+        XCTAssertTrue(prompt.contains("Currently selected bookmark: Swift Notes (https://example.com/swift)"))
+    }
+
     func testAgentAddRequiresCompletePresummarizedBookmark() {
         let complete = "GET /agent/add?token=good&url=https%3A%2F%2Fexample.com%2Fai&title=AI%20Hardware&summary=Accelerator%20notes&category=AI&tags=ai%2Cchips HTTP/1.1\r\n\r\n"
         let missingTags = "GET /agent/add?token=good&url=https%3A%2F%2Fexample.com%2Fai&title=AI%20Hardware&summary=Accelerator%20notes&category=AI HTTP/1.1\r\n\r\n"

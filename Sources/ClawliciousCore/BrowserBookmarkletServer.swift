@@ -23,11 +23,16 @@ public final class BrowserBookmarkletServer: @unchecked Sendable {
         return "javascript:(()=>{open('\(endpoint)'+encodeURIComponent(location.href),'clawlicious','popup,width=420,height=220')})()"
     }
 
-    public var agentConnectionText: String {
-        """
+    public func agentConnectionText(selectedBookmark: Bookmark?) -> String {
+        let selection = selectedBookmark.map {
+            "Currently selected bookmark: \($0.title.cleanedSingleLine) (\($0.url.absoluteString))\n"
+        } ?? ""
+
+        return """
         ```md
         Clawlicious is a local app for managing my saved bookmarks.
         Use this as a plain chat; no project/workspace is needed.
+        \(selection)
 
         Base URL: http://127.0.0.1:\(port)
         Token: \(token)

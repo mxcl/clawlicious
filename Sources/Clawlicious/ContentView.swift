@@ -215,7 +215,10 @@ private struct CodexAgentButton: View {
         components.scheme = "codex"
         components.host = "new"
         components.queryItems = [
-            URLQueryItem(name: "prompt", value: BrowserBookmarkletServer.shared.agentConnectionText)
+            URLQueryItem(
+                name: "prompt",
+                value: BrowserBookmarkletServer.shared.agentConnectionText(selectedBookmark: library.selectedBookmark)
+            )
         ]
 
         guard let url = components.url, NSWorkspace.shared.open(url) else {
