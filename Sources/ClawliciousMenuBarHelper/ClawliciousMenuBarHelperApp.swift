@@ -17,19 +17,30 @@ struct ClawliciousMenuBarHelperApp: App {
         MenuBarExtra {
             HelperMenuView()
         } label: {
-            Image(systemName: worker.iconState.systemImage)
-                .symbolRenderingMode(.palette)
-                .foregroundStyle(worker.iconState.color)
-                .accessibilityLabel("Clawlicious")
+            ZStack {
+                Image(systemName: "bookmark")
+                    .opacity(worker.iconState.showsOutline ? 1 : 0)
+                Image(systemName: "bookmark.fill")
+                    .opacity(worker.iconState.showsOutline ? 0 : 1)
+            }
+            .symbolRenderingMode(.palette)
+            .foregroundStyle(worker.iconState.color)
+            .animation(worker.iconState.flashAnimation, value: worker.iconState)
+            .accessibilityLabel("Clawlicious")
         }
     }
 }
 
 private extension MenuBarIconState {
-    var systemImage: String {
+    var showsOutline: Bool {
+        self == .idle || self == .processingFlash
+    }
+
+    var flashAnimation: Animation? {
         switch self {
-        case .idle, .processingFlash: "bookmark"
-        case .processing, .success, .failure: "bookmark.fill"
+        case .processingFlash: .easeOut(duration: 0.05)
+        case .processing: .easeInOut(duration: 0.2)
+        default: nil
         }
     }
 
