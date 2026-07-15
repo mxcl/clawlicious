@@ -75,7 +75,8 @@ usage: build.sh [--install] [--run] [--dmg] [--notarize] [--publish]
 
 `--notarize` signs, packages, notarizes, and staples a DMG. `--publish` also
 asks Codex to choose and commit the next semantic version, pushes it, creates
-the corresponding GitHub release, and updates `~/src/homebrew-made`.
+the corresponding GitHub release, clones `homebrew-made`, updates its cask,
+and pushes it.
 
 ## Contributing
 

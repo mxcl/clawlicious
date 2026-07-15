@@ -103,6 +103,11 @@ done
 
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "MARKETING_VERSION must be X.Y.Z"
 
+if $dmg; then
+  work="$(mktemp -d)"
+  trap 'rm -rf "$work"' EXIT
+fi
+
 if $publish; then
   require_tool codex
   require_tool gh
@@ -112,10 +117,8 @@ if $publish; then
   git -C "$root" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' >/dev/null 2>&1 ||
     die "The current branch needs an upstream before publishing"
 
-  tap="${TAP_ROOT:-$HOME/src/homebrew-made}"
-  [[ -d "$tap/.git" ]] || die "Set TAP_ROOT to the homebrew-made checkout"
-  [[ -z "$(git -C "$tap" status --porcelain)" ]] || die "$tap has uncommitted changes"
-  git -C "$tap" pull --ff-only
+  tap="$work/homebrew-made"
+  gh repo clone homebrew-made "$tap"
 
   current_version="$(script_version)"
   [[ -n "$current_version" ]] || die "Unable to read the default version from scripts/build.sh"
@@ -181,8 +184,6 @@ codesign "${codesign_args[@]}" "$app" >/dev/null
 codesign --verify --strict --deep "$app"
 
 if $dmg; then
-  work="$(mktemp -d)"
-  trap 'rm -rf "$work"' EXIT
   mkdir -p "$work/dmg" "$(dirname "$dmg_path")"
   cp -R "$app" "$work/dmg/Clawlicious.app"
   ln -s /Applications "$work/dmg/Applications"
