@@ -3,7 +3,7 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 configuration="${CONFIGURATION:-release}"
-version="${MARKETING_VERSION:-1.2.0}"
+version="${MARKETING_VERSION:-1.3.0}"
 build="${CURRENT_PROJECT_VERSION:-1}"
 app="$root/.build/Clawlicious.app"
 installed_app="/Applications/Clawlicious.app"
