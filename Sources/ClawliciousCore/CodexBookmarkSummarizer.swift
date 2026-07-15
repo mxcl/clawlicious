@@ -144,7 +144,7 @@ private struct CodexResponsesClient {
         Current tags: \(jsonList(context.tags))
 
         Page markdown from the app browser:
-        \(String(page.markdown.prefix(12_000)))
+        \(page.markdown)
         """
 
         var request = URLRequest(url: URL(string: "https://api.openai.com/v1/responses")!)
@@ -257,7 +257,7 @@ public actor CodexAppServerSession {
         Current categories: \(jsonList(context.categories))
         Current tags: \(jsonList(context.tags))
         Page markdown from the app browser:
-        \(String(page.markdown.prefix(12_000)))
+        \(page.markdown)
         """
 
         let thread = try await request("thread/start", [
